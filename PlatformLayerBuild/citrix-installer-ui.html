@@ -88,6 +88,7 @@
             font-size: 16px;
             font-weight: 500;
             font-family: inherit;
+            margin: 0 5px;
         }
         .primary-button {
             background-color: #0067b8;
@@ -97,8 +98,17 @@
             background-color: #e5e5e5;
             color: #333;
         }
+        .info-button {
+            background-color: #107c10;
+            color: white;
+        }
         button:hover {
             opacity: 0.9;
+        }
+        button:disabled {
+            background-color: #cccccc;
+            cursor: not-allowed;
+            opacity: 0.7;
         }
         .output {
             margin-top: 25px;
@@ -178,6 +188,159 @@
         .toggle-label {
             font-weight: 500;
         }
+        .activity-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: rgba(0, 0, 0, 0.7);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+            display: none;
+        }
+        .activity-window {
+            background-color: white;
+            width: 600px;
+            max-width: 90%;
+            border-radius: 8px;
+            box-shadow: 0 5px 20px rgba(0, 0, 0, 0.3);
+            overflow: hidden;
+        }
+        .activity-header {
+            background-color: #0067b8;
+            color: white;
+            padding: 15px 20px;
+            font-size: 18px;
+            font-weight: bold;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .activity-header button {
+            background: none;
+            border: none;
+            color: white;
+            font-size: 20px;
+            cursor: pointer;
+            padding: 0 5px;
+        }
+        .activity-content {
+            padding: 20px;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        .activity-log {
+            background-color: #1e1e1e;
+            color: #f0f0f0;
+            padding: 15px;
+            border-radius: 4px;
+            font-family: Consolas, monospace;
+            white-space: pre-wrap;
+            height: 300px;
+            overflow-y: auto;
+            margin-bottom: 15px;
+        }
+        .activity-progress {
+            width: 100%;
+            height: 20px;
+            background-color: #f0f0f0;
+            border-radius: 10px;
+            overflow: hidden;
+            margin-bottom: 15px;
+        }
+        .progress-bar {
+            height: 100%;
+            background-color: #107c10;
+            width: 0%;
+            transition: width 0.3s ease-in-out;
+        }
+        .activity-footer {
+            padding: 15px 20px;
+            display: flex;
+            justify-content: flex-end;
+            border-top: 1px solid #e5e5e5;
+        }
+        .preview-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: rgba(0, 0, 0, 0.7);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+            display: none;
+        }
+        .preview-window {
+            background-color: white;
+            width: 800px;
+            max-width: 95%;
+            max-height: 90vh;
+            border-radius: 8px;
+            box-shadow: 0 5px 20px rgba(0, 0, 0, 0.3);
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+        .preview-header {
+            background-color: #0067b8;
+            color: white;
+            padding: 15px 20px;
+            font-size: 18px;
+            font-weight: bold;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .preview-header button {
+            background: none;
+            border: none;
+            color: white;
+            font-size: 20px;
+            cursor: pointer;
+            padding: 0 5px;
+        }
+        .preview-content {
+            padding: 20px;
+            overflow-y: auto;
+            flex-grow: 1;
+            display: flex;
+            flex-direction: column;
+        }
+        .preview-section {
+            margin-bottom: 20px;
+            padding: 15px;
+            background-color: #f9f9f9;
+            border-radius: 6px;
+            border-left: 4px solid #0067b8;
+        }
+        .preview-section h3 {
+            margin-top: 0;
+            color: #0067b8;
+            border-bottom: 1px solid #e0e0e0;
+            padding-bottom: 8px;
+            margin-bottom: 15px;
+        }
+        .preview-list {
+            margin: 0;
+            padding-left: 30px;
+        }
+        .preview-list li {
+            margin-bottom: 8px;
+        }
+        .preview-footer {
+            padding: 15px 20px;
+            display: flex;
+            justify-content: flex-end;
+            border-top: 1px solid #e5e5e5;
+        }
     </style>
 </head>
 <body>
@@ -223,87 +386,6 @@
                 <span class="toggle-label"><strong>VDA Additional Components</strong></span>
                 <span style="font-size: 12px; color: #666; margin-top: -10px; display: block;">Select which additional components to install with the VDA</span>
             </div>
-        </div>
-        
-        <div class="section">
-            <h2>Installation Paths</h2>
-            
-            <label for="vdaPath">VDA Installer Path:</label>
-            <input type="text" id="vdaPath" value="C:\Install\VDAServerSetup.exe">
-            
-            <div id="pvsPathSection">
-                <label for="pvsPath">PVS Target Device Installer Path:</label>
-                <input type="text" id="pvsPath" value="C:\Install\PVS_Device.exe">
-            </div>
-            
-            <div id="wemPathSection">
-                <label for="wemPath">WEM Agent Installer Path:</label>
-                <input type="text" id="wemPath" value="C:\Install\Citrix Workspace Environment Management Agent.exe">
-            </div>
-            
-            <div id="optimizerPathSection">
-                <label for="optimizerPath">Citrix Optimizer Script Path:</label>
-                <input type="text" id="optimizerPath" value="C:\Install\CtxOptimizerEngine.ps1">
-                
-                <label for="templatePath">Optimizer Template Path (Optional):</label>
-                <input type="text" id="templatePath" placeholder="Leave empty to use built-in templates">
-            </div>
-            
-            <label for="logPath">Log Path:</label>
-            <input type="text" id="logPath" value="C:\Logs\Citrix_Install">
-        </div>
-        
-        <div class="section settings-section">
-            <h2>Configuration Settings</h2>
-            
-            <label for="controllerAddress">Delivery Controller Address:</label>
-            <input type="text" id="controllerAddress" placeholder="e.g., ddc01.domain.local">
-            
-            <div id="pvsSettingsSection">
-                <label for="pvsServerAddress">PVS Server Address:</label>
-                <input type="text" id="pvsServerAddress" placeholder="e.g., pvs01.domain.local">
-                
-                <label for="pvsBootMode">PVS Boot Mode:</label>
-                <select id="pvsBootMode">
-                    <option value="VM-AUTO">VM-AUTO</option>
-                    <option value="VM-STATIC">VM-STATIC</option>
-                    <option value="VM-DHCP">VM-DHCP</option>
-                </select>
-            </div>
-            
-            <div id="wemSettingsSection">
-                <label for="wemServer">WEM Infrastructure Server:</label>
-                <input type="text" id="wemServer" placeholder="e.g., wem01.domain.local">
-                
-                <label for="wemPort">WEM Agent Port:</label>
-                <input type="number" id="wemPort" value="8286">
-            </div>
-            
-            <div id="optimizerSettingsSection">
-                <label for="optimizerMode">Optimizer Mode:</label>
-                <select id="optimizerMode">
-                    <option value="Analyze">Analyze (Check only)</option>
-                    <option value="Execute" selected>Execute (Apply optimizations)</option>
-                    <option value="ExecuteForce">ExecuteForce (Force apply all)</option>
-                    <option value="Rollback">Rollback (Undo previous optimizations)</option>
-                </select>
-            </div>
-            
-            <label for="vdaMode">VDA Installation Mode:</label>
-            <select id="vdaMode">
-                <option value="Server" selected>Server</option>
-                <option value="Workstation">Workstation</option>
-            </select>
-            
-            <div class="checkbox-label">
-                <input type="checkbox" id="optimizeForLayering" checked>
-                <span>Optimize for layering</span>
-            </div>
-            
-            <div class="checkbox-label">
-                <input type="checkbox" id="enableRemoteAssistance" checked>
-                <span>Enable Remote Assistance</span>
-            </div>
             
             <div class="component-group">
                 <span class="component-title">VDA Additional Components:</span>
@@ -321,15 +403,9 @@
                 </div>
                 
                 <div class="checkbox-label">
-                    <input type="checkbox" id="includeUSBSupport" checked>
+                    <input type="checkbox" id="includeUSBSupport">
                     <span>USB Device Redirection</span>
                     <span class="note">Support for redirecting USB devices to the virtual session</span>
-                </div>
-                
-                <div class="checkbox-label">
-                    <input type="checkbox" id="includeStoreFront">
-                    <span>StoreFront</span>
-                    <span class="note">Local StoreFront server (typically on Controller, not VDA)</span>
                 </div>
                 
                 <div class="checkbox-label">
@@ -370,6 +446,63 @@
             </div>
         </div>
         
+        <div class="section">
+            <h2>Installation Paths</h2>
+            
+            <label for="vdaPath">VDA Installer Path:</label>
+            <input type="text" id="vdaPath" value="C:\Install\VDAServerSetup.exe">
+            
+            <div id="pvsPathSection">
+                <label for="pvsPath">PVS Target Device Installer Path:</label>
+                <input type="text" id="pvsPath" value="C:\Install\PVS_Device.exe">
+            </div>
+            
+            <div id="wemPathSection">
+                <label for="wemPath">WEM Agent Installer Path:</label>
+                <input type="text" id="wemPath" value="C:\Install\Citrix Workspace Environment Management Agent.exe">
+            </div>
+            
+            <div id="optimizerPathSection">
+                <label for="optimizerPath">Citrix Optimizer Script Path:</label>
+                <input type="text" id="optimizerPath" value="C:\Install\CtxOptimizerEngine.ps1">
+                
+                <label for="templatePath">Optimizer Template Path (Optional):</label>
+                <input type="text" id="templatePath" placeholder="Leave empty to use built-in templates">
+            </div>
+            
+            <label for="logPath">Log Path:</label>
+            <input type="text" id="logPath" value="C:\Logs\Citrix_Install">
+        </div>
+        
+        <div class="section settings-section">
+            <h2>Configuration Settings</h2>
+            
+            <div id="optimizerSettingsSection">
+                <label for="optimizerMode">Optimizer Mode:</label>
+                <select id="optimizerMode">
+                    <option value="Analyze">Analyze (Check only)</option>
+                    <option value="Execute" selected>Execute (Apply optimizations)</option>
+                    <option value="ExecuteForce">ExecuteForce (Force apply all)</option>
+                    <option value="Rollback">Rollback (Undo previous optimizations)</option>
+                </select>
+            </div>
+            
+            <label for="vdaMode">VDA Installation Mode:</label>
+            <select id="vdaMode">
+                <option value="Server" selected>Server</option>
+            </select>
+            
+            <div class="checkbox-label">
+                <input type="checkbox" id="optimizeForLayering" checked>
+                <span>Optimize for layering</span>
+            </div>
+            
+            <div class="checkbox-label">
+                <input type="checkbox" id="enableRemoteAssistance">
+                <span>Enable Remote Assistance</span>
+            </div>
+        </div>
+        
         <div class="section output-section">
             <h2>PowerShell Script</h2>
             <p>Review the PowerShell command that will be executed:</p>
@@ -381,7 +514,46 @@
         
         <div class="button-group">
             <button class="secondary-button" id="generateButton">Generate Script File</button>
+            <button class="info-button" id="previewButton">Preview Installation</button>
             <button class="primary-button" id="runButton">Run Installation</button>
+        </div>
+    </div>
+    
+    <!-- Preview Window -->
+    <div class="preview-overlay" id="previewOverlay">
+        <div class="preview-window">
+            <div class="preview-header">
+                <span>Installation Preview</span>
+                <button id="closePreviewButton">&times;</button>
+            </div>
+            <div class="preview-content" id="previewContent">
+                <!-- Content will be dynamically generated -->
+            </div>
+            <div class="preview-footer">
+                <button class="secondary-button" id="closePreviewButtonBottom">Close</button>
+                <button class="primary-button" id="runFromPreviewButton">Run Installation</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Activity Window (Installation Progress) -->
+    <div class="activity-overlay" id="activityOverlay">
+        <div class="activity-window">
+            <div class="activity-header">
+                <span>Citrix Platform Layer Installation</span>
+                <button id="closeActivityButton">&times;</button>
+            </div>
+            <div class="activity-content">
+                <div class="activity-progress">
+                    <div class="progress-bar" id="progressBar"></div>
+                </div>
+                <div class="activity-log" id="activityLog">Starting installation process...
+                </div>
+            </div>
+            <div class="activity-footer">
+                <button class="secondary-button" id="cancelButton">Cancel</button>
+                <button class="primary-button" id="doneButton" disabled>Done</button>
+            </div>
         </div>
     </div>
 
@@ -390,12 +562,8 @@
         function toggleSections() {
             document.getElementById('pvsPathSection').style.display = 
                 document.getElementById('installPVS').checked ? 'block' : 'none';
-            document.getElementById('pvsSettingsSection').style.display = 
-                document.getElementById('installPVS').checked ? 'block' : 'none';
                 
             document.getElementById('wemPathSection').style.display = 
-                document.getElementById('installWEM').checked ? 'block' : 'none';
-            document.getElementById('wemSettingsSection').style.display = 
                 document.getElementById('installWEM').checked ? 'block' : 'none';
                 
             document.getElementById('optimizerPathSection').style.display = 
@@ -415,11 +583,6 @@
             const templatePath = document.getElementById('templatePath').value;
             const logPath = document.getElementById('logPath').value;
             
-            const controllerAddress = document.getElementById('controllerAddress').value;
-            const pvsServerAddress = document.getElementById('pvsServerAddress').value;
-            const pvsBootMode = document.getElementById('pvsBootMode').value;
-            const wemServer = document.getElementById('wemServer').value;
-            const wemPort = document.getElementById('wemPort').value;
             const optimizerMode = document.getElementById('optimizerMode').value;
             const vdaMode = document.getElementById('vdaMode').value;
             
@@ -432,7 +595,6 @@
             // Additional components
             const includeVdaPlugins = document.getElementById('includeVdaPlugins').checked;
             const includePersonalizationForWindows = document.getElementById('includePersonalizationForWindows').checked;
-            const includeStoreFront = document.getElementById('includeStoreFront').checked;
             const includeAppLayering = document.getElementById('includeAppLayering').checked;
             const includeMachineCatalogCreationTools = document.getElementById('includeMachineCatalogCreationTools').checked;
             const includeWorkspaceHub = document.getElementById('includeWorkspaceHub').checked;
@@ -443,15 +605,11 @@
             
             if (installPVS) {
                 script += `-PVSInstallerPath "${pvsPath}" `;
-                script += `-PVSServerAddress "${pvsServerAddress}" `;
-                script += `-PVSBootMode "${pvsBootMode}" `;
                 script += `-InstallPVS `;
             }
             
             if (installWEM) {
                 script += `-WEMAgentInstallerPath "${wemPath}" `;
-                script += `-WEMInfrastructureServer "${wemServer}" `;
-                script += `-WEMAgentPort ${wemPort} `;
                 script += `-InstallWEM `;
             }
             
@@ -464,7 +622,6 @@
                 script += `-RunOptimizer `;
             }
             
-            script += `-ControllerAddress "${controllerAddress}" `;
             script += `-LogPath "${logPath}" `;
             script += `-VDAInstallMode "${vdaMode}" `;
             
@@ -481,7 +638,6 @@
             
             if (includeVdaPlugins) additionalComponents.push("VDA_PLUGINS");
             if (includePersonalizationForWindows) additionalComponents.push("PERSONALIZATION");
-            if (includeStoreFront) additionalComponents.push("STOREFRONT");
             if (includeAppLayering) additionalComponents.push("LAYERING_HOST");
             if (includeMachineCatalogCreationTools) additionalComponents.push("MACHINE_IDENTITY");
             if (includeWorkspaceHub) additionalComponents.push("WORKSPACE_HUB");
@@ -516,28 +672,53 @@
             URL.revokeObjectURL(url);
         }
         
-        // Function to run the installation (simulated in this HTML file)
-        function runInstallation() {
-            alert('This button would typically launch PowerShell and run the installation script.\n\nIn a real implementation, this would need to be implemented using something like a PowerShell Web Server or a small application that can invoke PowerShell commands.');
-        }
-        
-        // Add event listeners
-        document.getElementById('installPVS').addEventListener('change', toggleSections);
-        document.getElementById('installWEM').addEventListener('change', toggleSections);
-        document.getElementById('runOptimizer').addEventListener('change', toggleSections);
-        
-        document.getElementById('generateButton').addEventListener('click', generateScriptFile);
-        document.getElementById('runButton').addEventListener('click', runInstallation);
-        
-        // Add event listeners to all form fields
-        const formFields = document.querySelectorAll('input, select');
-        formFields.forEach(field => {
-            field.addEventListener('change', updateScript);
-            field.addEventListener('input', updateScript);
-        });
-        
-        // Initialize the UI
-        toggleSections();
-    </script>
-</body>
-</html>
+        // Function to show installation preview
+        function showPreview() {
+            // Get the preview content element
+            const previewContent = document.getElementById('previewContent');
+            previewContent.innerHTML = ''; // Clear existing content
+            
+            // Create components section
+            const componentsSection = document.createElement('div');
+            componentsSection.className = 'preview-section';
+            
+            // Components header
+            const componentsHeader = document.createElement('h3');
+            componentsHeader.textContent = 'Components to be Installed';
+            componentsSection.appendChild(componentsHeader);
+            
+            // Components list
+            const componentsList = document.createElement('ul');
+            componentsList.className = 'preview-list';
+            
+            // Always add VDA
+            let vdaItem = document.createElement('li');
+            vdaItem.textContent = `Citrix Virtual Delivery Agent (${document.getElementById('vdaMode').value} Mode)`;
+            vdaItem.innerHTML += `<br><span class="note">Location: ${document.getElementById('vdaPath').value}</span>`;
+            componentsList.appendChild(vdaItem);
+            
+            // Add PVS if selected
+            if(document.getElementById('installPVS').checked) {
+                let pvsItem = document.createElement('li');
+                pvsItem.textContent = `Provisioning Services Target Device`;
+                pvsItem.innerHTML += `<br><span class="note">Location: ${document.getElementById('pvsPath').value}</span>`;
+                componentsList.appendChild(pvsItem);
+            }
+            
+            // Add WEM if selected
+            if(document.getElementById('installWEM').checked) {
+                let wemItem = document.createElement('li');
+                wemItem.textContent = `Workspace Environment Management Agent`;
+                wemItem.innerHTML += `<br><span class="note">Location: ${document.getElementById('wemPath').value}</span>`;
+                componentsList.appendChild(wemItem);
+            }
+            
+            // Add Optimizer if selected
+            if(document.getElementById('runOptimizer').checked) {
+                let optimizerItem = document.createElement('li');
+                optimizerItem.textContent = `Citrix Optimizer (${document.getElementById('optimizerMode').value} Mode)`;
+                optimizerItem.innerHTML += `<br><span class="note">Location: ${document.getElementById('optimizerPath').value}</span>`;
+                if(document.getElementById('templatePath').value) {
+                    optimizerItem.innerHTML += `<br><span class="note">Template: ${document.getElementById('templatePath').value}</span>`;
+                } else {
+                    optimizerItem.innerHTML += `<br><span class="note">Using

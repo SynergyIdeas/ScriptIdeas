@@ -213,11 +213,6 @@ try {
     exit 1
 }
 
-# Re-enable Windows Update service after installation
-Write-Log "Re-enabling Windows Update service"
-Set-Service -Name wuauserv -StartupType Automatic
-Start-Service -Name wuauserv
-
 # Install PVS Target Device Software
 if($InstallPVS) {
     Write-Log "Starting PVS Target Device Software installation"
@@ -573,6 +568,11 @@ foreach($task in $postInstallTasks) {
         Write-Log "WARNING: Post-installation task failed: $_"
     }
 }
+
+# Re-enable Windows Update service after installation
+Write-Log "Re-enabling Windows Update service"
+Set-Service -Name wuauserv -StartupType Automatic
+Start-Service -Name wuauserv
 
 Write-Log "Citrix platform layer installation script completed"
 Write-Log "A reboot is recommended before capturing the layer"
