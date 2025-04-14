@@ -119,7 +119,9 @@ try {
         Write-Log "Exported Farm configuration to $farmExportFile" "SUCCESS"
         
         # Get sites in the farm
-        $pvsSites = Get-PvsSite -FarmId $farm.FarmId
+        $pvsSites = Get-PvsSite
+        # Filter for sites belonging to this farm
+        $pvsSites = $pvsSites | Where-Object { $_.FarmId -eq $farm.FarmId }
         Write-Log "Found $($pvsSites.Count) site(s) in farm $farmName" "INFO"
         
         # Create a sites directory
