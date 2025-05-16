@@ -1,0 +1,2110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PowerShell Script Builder</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        :root {
+            --primary: #2563eb;
+            --primary-dark: #1e40af;
+            --secondary: #64748b;
+            --success: #10b981;
+            --danger: #ef4444;
+            --warning: #f59e0b;
+            --info: #3b82f6;
+            --light: #f8fafc;
+            --dark: #1e293b;
+            --gray: #94a3b8;
+            --gray-light: #e2e8f0;
+            --white: #ffffff;
+        }
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        
+        body {
+            background-color: #f1f5f9;
+            color: var(--dark);
+            line-height: 1.6;
+        }
+        
+        .container {
+            display: flex;
+            min-height: 100vh;
+        }
+        
+        .sidebar {
+            width: 260px;
+            background-color: var(--dark);
+            color: var(--white);
+            padding: 1.5rem 0;
+            display: flex;
+            flex-direction: column;
+            overflow-y: auto;
+        }
+        
+        .sidebar-brand {
+            padding: 0 1.5rem 1.5rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            margin-bottom: 1rem;
+        }
+        
+        .sidebar-brand h2 {
+            font-size: 1.25rem;
+            font-weight: 600;
+        }
+        
+        .sidebar-menu {
+            list-style: none;
+        }
+        
+        .sidebar-menu-item {
+            padding: 0.75rem 1.5rem;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+        
+        .sidebar-menu-item.active {
+            background-color: rgba(255, 255, 255, 0.1);
+            border-left: 4px solid var(--primary);
+        }
+        
+        .sidebar-menu-item:hover:not(.active) {
+            background-color: rgba(255, 255, 255, 0.05);
+        }
+        
+        .main-content {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            overflow-x: hidden;
+        }
+        
+        .header {
+            background-color: var(--white);
+            padding: 1rem 2rem;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+        }
+        
+        .header h1 {
+            font-size: 1.5rem;
+            font-weight: 600;
+        }
+        
+        .tab-content {
+            padding: 2rem;
+            flex: 1;
+            display: none;
+        }
+        
+        .tab-content.active {
+            display: block;
+        }
+        
+        .card {
+            background-color: var(--white);
+            border-radius: 0.5rem;
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05);
+            padding: 1.5rem;
+            margin-bottom: 1.5rem;
+        }
+        
+        .card-title {
+            font-size: 1.25rem;
+            font-weight: 600;
+            margin-bottom: 1rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        
+        .form-group {
+            margin-bottom: 1rem;
+        }
+        
+        .form-group-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 0.5rem;
+        }
+        
+        .form-group label {
+            display: block;
+            margin-bottom: 0.25rem;
+            font-weight: 500;
+            font-size: 0.875rem;
+        }
+        
+        .form-control {
+            width: 100%;
+            padding: 0.5rem 0.75rem;
+            font-size: 0.875rem;
+            border: 1px solid var(--gray-light);
+            border-radius: 0.25rem;
+            transition: border-color 0.15s ease-in-out;
+        }
+        
+        .form-control:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.2);
+        }
+        
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+            padding: 0.5rem 1rem;
+            font-size: 0.875rem;
+            font-weight: 500;
+            border-radius: 0.25rem;
+            border: none;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        
+        .btn-primary {
+            background-color: var(--primary);
+            color: var(--white);
+        }
+        
+        .btn-primary:hover {
+            background-color: var(--primary-dark);
+        }
+        
+        .btn-secondary {
+            background-color: var(--secondary);
+            color: var(--white);
+        }
+        
+        .btn-secondary:hover {
+            background-color: #475569;
+        }
+        
+        .btn-success {
+            background-color: var(--success);
+            color: var(--white);
+        }
+        
+        .btn-success:hover {
+            background-color: #059669;
+        }
+        
+        .btn-danger {
+            background-color: var(--danger);
+            color: var(--white);
+        }
+        
+        .btn-danger:hover {
+            background-color: #dc2626;
+        }
+        
+        .btn-sm {
+            padding: 0.25rem 0.5rem;
+            font-size: 0.75rem;
+        }
+        
+        .btn-icon {
+            width: 36px;
+            height: 36px;
+            padding: 0;
+            border-radius: 50%;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .tabs {
+            display: flex;
+            gap: 1rem;
+            border-bottom: 1px solid var(--gray-light);
+            margin-bottom: 1.5rem;
+        }
+        
+        .tab-item {
+            padding: 0.75rem 1rem;
+            cursor: pointer;
+            font-weight: 500;
+            border-bottom: 2px solid transparent;
+            transition: all 0.2s ease;
+        }
+        
+        .tab-item.active {
+            border-bottom-color: var(--primary);
+            color: var(--primary);
+        }
+        
+        .tab-item:hover:not(.active) {
+            border-bottom-color: var(--gray);
+        }
+        
+        .row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 1rem;
+            margin-bottom: 1rem;
+        }
+        
+        .col {
+            flex: 1;
+        }
+        
+        .table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        
+        .table th,
+        .table td {
+            padding: 0.75rem;
+            border-bottom: 1px solid var(--gray-light);
+            text-align: left;
+        }
+        
+        .table th {
+            font-weight: 600;
+            color: var(--secondary);
+        }
+        
+        .table tbody tr:hover {
+            background-color: #f8fafc;
+        }
+        
+        .badge {
+            display: inline-block;
+            padding: 0.25rem 0.5rem;
+            font-size: 0.75rem;
+            font-weight: 500;
+            border-radius: 9999px;
+        }
+        
+        .badge-success {
+            background-color: #d1fae5;
+            color: #065f46;
+        }
+        
+        .badge-warning {
+            background-color: #fef3c7;
+            color: #92400e;
+        }
+        
+        .badge-danger {
+            background-color: #fee2e2;
+            color: #b91c1c;
+        }
+        
+        .form-check {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            margin-bottom: 0.5rem;
+        }
+        
+        .form-check input[type="checkbox"] {
+            width: 1rem;
+            height: 1rem;
+        }
+        
+        .file-drop-area {
+            border: 2px dashed var(--gray-light);
+            border-radius: 0.25rem;
+            padding: 2rem;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        
+        .file-drop-area:hover {
+            border-color: var(--primary);
+        }
+        
+        .list-group {
+            list-style: none;
+            border-radius: 0.25rem;
+        }
+        
+        .list-group-item {
+            padding: 0.75rem 1rem;
+            border: 1px solid var(--gray-light);
+            border-bottom: none;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        
+        .list-group-item:first-child {
+            border-top-left-radius: 0.25rem;
+            border-top-right-radius: 0.25rem;
+        }
+        
+        .list-group-item:last-child {
+            border-bottom: 1px solid var(--gray-light);
+            border-bottom-left-radius: 0.25rem;
+            border-bottom-right-radius: 0.25rem;
+        }
+        
+        .code-preview {
+            background-color: #1e293b;
+            color: #f8fafc;
+            padding: 1rem;
+            border-radius: 0.25rem;
+            font-family: 'Courier New', monospace;
+            overflow-x: auto;
+            margin-top: 1rem;
+            white-space: pre;
+        }
+        
+        .hidden {
+            display: none;
+        }
+        
+        .action-buttons {
+            display: flex;
+            gap: 0.5rem;
+            margin-top: 1rem;
+            justify-content: flex-end;
+        }
+        
+        .alert {
+            padding: 0.75rem 1rem;
+            border-radius: 0.25rem;
+            margin-bottom: 1rem;
+        }
+        
+        .alert-success {
+            background-color: #d1fae5;
+            color: #065f46;
+            border-left: 4px solid #10b981;
+        }
+        
+        .alert-warning {
+            background-color: #fef3c7;
+            color: #92400e;
+            border-left: 4px solid #f59e0b;
+        }
+        
+        .alert-danger {
+            background-color: #fee2e2;
+            color: #b91c1c;
+            border-left: 4px solid #ef4444;
+        }
+        
+        .item-actions {
+            display: flex;
+            gap: 0.5rem;
+        }
+        
+        .modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+        
+        .modal.show {
+            display: flex;
+        }
+        
+        .modal-content {
+            background-color: var(--white);
+            border-radius: 0.5rem;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+            width: 100%;
+            max-width: 500px;
+        }
+        
+        .modal-header {
+            padding: 1rem 1.5rem;
+            border-bottom: 1px solid var(--gray-light);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        
+        .modal-title {
+            font-size: 1.25rem;
+            font-weight: 600;
+        }
+        
+        .modal-close {
+            background: none;
+            border: none;
+            font-size: 1.5rem;
+            cursor: pointer;
+            color: var(--secondary);
+        }
+        
+        .modal-body {
+            padding: 1.5rem;
+        }
+        
+        .modal-footer {
+            padding: 1rem 1.5rem;
+            border-top: 1px solid var(--gray-light);
+            display: flex;
+            justify-content: flex-end;
+            gap: 0.5rem;
+        }
+        
+        .footer {
+            background-color: var(--white);
+            padding: 1rem 2rem;
+            text-align: center;
+            border-top: 1px solid var(--gray-light);
+            font-size: 0.875rem;
+            color: var(--secondary);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="sidebar">
+            <div class="sidebar-brand">
+                <i class="fas fa-terminal fa-lg"></i>
+                <h2>PowerShell Builder</h2>
+            </div>
+            <ul class="sidebar-menu">
+                <li class="sidebar-menu-item active" data-tab="dashboard">
+                    <i class="fas fa-tachometer-alt"></i>
+                    <span>Dashboard</span>
+                </li>
+                <li class="sidebar-menu-item" data-tab="network-drives">
+                    <i class="fas fa-network-wired"></i>
+                    <span>Network Drives</span>
+                </li>
+                <li class="sidebar-menu-item" data-tab="app-install">
+                    <i class="fas fa-download"></i>
+                    <span>Install Applications</span>
+                </li>
+                <li class="sidebar-menu-item" data-tab="file-copy">
+                    <i class="fas fa-copy"></i>
+                    <span>Copy Files</span>
+                </li>
+                <li class="sidebar-menu-item" data-tab="registry">
+                    <i class="fas fa-database"></i>
+                    <span>Registry Entries</span>
+                </li>
+                <li class="sidebar-menu-item" data-tab="fonts">
+                    <i class="fas fa-font"></i>
+                    <span>Install Fonts</span>
+                </li>
+                <li class="sidebar-menu-item" data-tab="script-builder">
+                    <i class="fas fa-code"></i>
+                    <span>Script Builder</span>
+                </li>
+            </ul>
+        </div>
+        <div class="main-content">
+            <div class="header">
+                <h1>PowerShell Script Generator</h1>
+                <button id="generate-script" class="btn btn-primary">
+                    <i class="fas fa-play"></i>
+                    Generate Full Script
+                </button>
+            </div>
+            
+            <!-- Dashboard Tab -->
+            <div class="tab-content active" id="dashboard">
+                <div class="card">
+                    <div class="card-title">
+                        <i class="fas fa-info-circle"></i>
+                        Welcome to PowerShell Script Builder
+                    </div>
+                    <p>This tool helps you build PowerShell scripts for system setup and configuration tasks. Use the sidebar to navigate between different script sections.</p>
+                    <div class="alert alert-info" style="background-color: #dbeafe; color: #1e40af; border-left: 4px solid #3b82f6; margin-top: 1rem;">
+                        <i class="fas fa-info-circle"></i>
+                        Begin by configuring settings in each tab, then generate your complete script.
+                    </div>
+                </div>
+                
+                <div class="row">
+                    <div class="col">
+                        <div class="card">
+                            <div class="card-title">
+                                <i class="fas fa-chart-line"></i>
+                                Script Components
+                            </div>
+                            <div class="list-group">
+                                <div class="list-group-item">
+                                    <span>Network Drives</span>
+                                    <span class="badge badge-warning" id="dashboard-network-drives-count">0 configured</span>
+                                </div>
+                                <div class="list-group-item">
+                                    <span>Applications</span>
+                                    <span class="badge badge-warning" id="dashboard-applications-count">0 configured</span>
+                                </div>
+                                <div class="list-group-item">
+                                    <span>File Copy Tasks</span>
+                                    <span class="badge badge-warning" id="dashboard-file-copy-count">0 configured</span>
+                                </div>
+                                <div class="list-group-item">
+                                    <span>Registry Entries</span>
+                                    <span class="badge badge-warning" id="dashboard-registry-count">0 configured</span>
+                                </div>
+                                <div class="list-group-item">
+                                    <span>Font Installation</span>
+                                    <span class="badge badge-warning" id="dashboard-fonts-count">0 configured</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col">
+                        <div class="card">
+                            <div class="card-title">
+                                <i class="fas fa-cogs"></i>
+                                Script Settings
+                            </div>
+                            <div class="form-group">
+                                <label for="script-name">Script Name</label>
+                                <input type="text" id="script-name" class="form-control" value="System_Setup_Script">
+                            </div>
+                            <div class="form-group">
+                                <label for="script-author">Author</label>
+                                <input type="text" id="script-author" class="form-control" placeholder="Your Name">
+                            </div>
+                            <div class="form-group">
+                                <label for="script-description">Description</label>
+                                <textarea id="script-description" class="form-control" rows="3" placeholder="Brief description of what this script does"></textarea>
+                            </div>
+                            <div class="form-check">
+                                <input type="checkbox" id="include-logging" checked>
+                                <label for="include-logging">Include Logging</label>
+                            </div>
+                            <div class="form-check">
+                                <input type="checkbox" id="require-admin" checked>
+                                <label for="require-admin">Require Administrator</label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Network Drives Tab -->
+            <div class="tab-content" id="network-drives">
+                <div class="card">
+                    <div class="card-title">
+                        <i class="fas fa-network-wired"></i>
+                        Map Network Drives
+                    </div>
+                    <p>Configure network drives to be mapped during script execution.</p>
+                    
+                    <div id="network-drives-list" class="list-group">
+                        <!-- Network drives will be added here dynamically -->
+                    </div>
+                    
+                    <div class="form-group" style="margin-top: 1rem;">
+                        <button id="add-network-drive" class="btn btn-primary">
+                            <i class="fas fa-plus"></i>
+                            Add Network Drive
+                        </button>
+                    </div>
+                </div>
+                
+                <div class="card">
+                    <div class="card-title">
+                        <i class="fas fa-code"></i>
+                        Network Drives PowerShell Preview
+                    </div>
+                    <div id="network-drives-code" class="code-preview">
+# No network drives configured yet
+                    </div>
+                </div>
+            </div>
+            
+            <!-- App Install Tab -->
+            <div class="tab-content" id="app-install">
+                <div class="card">
+                    <div class="card-title">
+                        <i class="fas fa-download"></i>
+                        Install Applications
+                    </div>
+                    <p>Configure applications to be installed with command line arguments.</p>
+                    
+                    <div id="applications-list" class="list-group">
+                        <!-- Applications will be added here dynamically -->
+                    </div>
+                    
+                    <div class="form-group" style="margin-top: 1rem;">
+                        <button id="add-application" class="btn btn-primary">
+                            <i class="fas fa-plus"></i>
+                            Add Application
+                        </button>
+                    </div>
+                </div>
+                
+                <div class="card">
+                    <div class="card-title">
+                        <i class="fas fa-code"></i>
+                        Application Install PowerShell Preview
+                    </div>
+                    <div id="applications-code" class="code-preview">
+# No applications configured yet
+                    </div>
+                </div>
+            </div>
+            
+            <!-- File Copy Tab -->
+            <div class="tab-content" id="file-copy">
+                <div class="card">
+                    <div class="card-title">
+                        <i class="fas fa-copy"></i>
+                        Copy Files
+                    </div>
+                    <p>Configure file copy operations from network shares to local folders.</p>
+                    
+                    <div id="file-copy-list" class="list-group">
+                        <!-- File copy tasks will be added here dynamically -->
+                    </div>
+                    
+                    <div class="form-group" style="margin-top: 1rem;">
+                        <button id="add-file-copy" class="btn btn-primary">
+                            <i class="fas fa-plus"></i>
+                            Add File Copy Task
+                        </button>
+                    </div>
+                </div>
+                
+                <div class="card">
+                    <div class="card-title">
+                        <i class="fas fa-code"></i>
+                        File Copy PowerShell Preview
+                    </div>
+                    <div id="file-copy-code" class="code-preview">
+# No file copy tasks configured yet
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Registry Tab -->
+            <div class="tab-content" id="registry">
+                <div class="card">
+                    <div class="card-title">
+                        <i class="fas fa-database"></i>
+                        Registry Entries
+                    </div>
+                    <p>Add registry entries or import .reg files.</p>
+                    
+                    <div class="tabs">
+                        <div class="tab-item active" data-regtype="manual">Manual Entry</div>
+                        <div class="tab-item" data-regtype="import">Import .REG Files</div>
+                    </div>
+                    
+                    <div id="registry-manual" class="tab-pane active">
+                        <div id="registry-entries-list" class="list-group">
+                            <!-- Registry entries will be added here dynamically -->
+                        </div>
+                        
+                        <div class="form-group" style="margin-top: 1rem;">
+                            <button id="add-registry-entry" class="btn btn-primary">
+                                <i class="fas fa-plus"></i>
+                                Add Registry Entry
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div id="registry-import" class="tab-pane" style="display: none;">
+                        <div id="registry-imports-list" class="list-group">
+                            <!-- Registry file imports will be added here dynamically -->
+                        </div>
+                        
+                        <div class="form-group" style="margin-top: 1rem;">
+                            <button id="add-registry-import" class="btn btn-primary">
+                                <i class="fas fa-plus"></i>
+                                Add Registry Import
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="card">
+                    <div class="card-title">
+                        <i class="fas fa-code"></i>
+                        Registry PowerShell Preview
+                    </div>
+                    <div id="registry-code" class="code-preview">
+# No registry entries configured yet
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Fonts Tab -->
+            <div class="tab-content" id="fonts">
+                <div class="card">
+                    <div class="card-title">
+                        <i class="fas fa-font"></i>
+                        Install Fonts
+                    </div>
+                    <p>Configure font installation from network shares.</p>
+                    
+                    <div class="form-group">
+                        <label for="fonts-source">Font Source Location (Network Path)</label>
+                        <input type="text" id="fonts-source" class="form-control" placeholder="\\server\share\fonts">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>Font Types to Install</label>
+                        <div class="form-check">
+                            <input type="checkbox" id="font-ttf" checked>
+                            <label for="font-ttf">TrueType Fonts (.ttf)</label>
+                        </div>
+                        <div class="form-check">
+                            <input type="checkbox" id="font-otf" checked>
+                            <label for="font-otf">OpenType Fonts (.otf)</label>
+                        </div>
+                    </div>
+                    
+                    <div class="form-check">
+                        <input type="checkbox" id="install-for-all-users">
+                        <label for="install-for-all-users">Install for all users (requires admin)</label>
+                    </div>
+                </div>
+                
+                <div class="card">
+                    <div class="card-title">
+                        <i class="fas fa-code"></i>
+                        Font Installation PowerShell Preview
+                    </div>
+                    <div id="fonts-code" class="code-preview">
+# Configure font source location to see preview
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Script Builder Tab -->
+            <div class="tab-content" id="script-builder">
+                <div class="card">
+                    <div class="card-title">
+                        <i class="fas fa-code"></i>
+                        Complete PowerShell Script
+                    </div>
+                    <p>Review and download the complete PowerShell script with all configured components.</p>
+                    
+                    <div id="complete-script" class="code-preview" style="max-height: 400px; overflow-y: auto;">
+# Configure script components in each tab and click "Generate Full Script"
+                    </div>
+                    
+                    <div class="action-buttons">
+                        <button id="copy-script" class="btn btn-secondary">
+                            <i class="fas fa-copy"></i>
+                            Copy to Clipboard
+                        </button>
+                        <button id="download-script" class="btn btn-primary">
+                            <i class="fas fa-download"></i>
+                            Download Script
+                        </button>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="footer">
+                PowerShell Script Builder © 2025 | v1.0.0
+            </div>
+        </div>
+    </div>
+    
+    <!-- Network Drive Modal -->
+    <div class="modal" id="network-drive-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 class="modal-title">Map Network Drive</h3>
+                <button class="modal-close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label for="drive-letter">Drive Letter</label>
+                    <select id="drive-letter" class="form-control">
+                        <option value="Z:">Z:</option>
+                        <option value="Y:">Y:</option>
+                        <option value="X:">X:</option>
+                        <option value="W:">W:</option>
+                        <option value="V:">V:</option>
+                        <option value="U:">U:</option>
+                        <option value="T:">T:</option>
+                        <option value="S:">S:</option>
+                        <option value="R:">R:</option>
+                        <option value="Q:">Q:</option>
+                        <option value="P:">P:</option>
+                        <option value="O:">O:</option>
+                        <option value="N:">N:</option>
+                        <option value="M:">M:</option>
+                        <option value="L:">L:</option>
+                        <option value="K:">K:</option>
+                        <option value="J:">J:</option>
+                        <option value="I:">I:</option>
+                        <option value="H:">H:</option>
+                        <option value="G:">G:</option>
+                        <option value="F:">F:</option>
+                        <option value="E:">E:</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="network-path">Network Path</label>
+                    <input type="text" id="network-path" class="form-control" placeholder="\\server\share">
+                </div>
+                <div class="form-group">
+                    <label for="use-credentials">Use Credentials</label>
+                    <div class="form-check">
+                        <input type="checkbox" id="use-credentials">
+                        <label for="use-credentials">Specify username and password</label>
+                    </div>
+                </div>
+                <div id="credentials-section" class="hidden">
+                    <div class="form-group">
+                        <label for="username">Username</label>
+                        <input type="text" id="username" class="form-control" placeholder="domain\username">
+                    </div>
+                    <div class="form-group">
+                        <label for="password">Password</label>
+                        <input type="password" id="password" class="form-control" placeholder="Password">
+                    </div>
+                    <div class="form-check">
+                        <input type="checkbox" id="persist-connection">
+                        <label for="persist-connection">Persist connection</label>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary cancel-modal">Cancel</button>
+                <button id="save-network-drive" class="btn btn-primary">Save</button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Application Modal -->
+    <div class="modal" id="application-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 class="modal-title">Add Application</h3>
+                <button class="modal-close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label for="app-name">Application Name</label>
+                    <input type="text" id="app-name" class="form-control" placeholder="e.g. Adobe Reader, Chrome, etc.">
+                </div>
+                <div class="form-group">
+                    <label for="installer-path">Installer Path</label>
+                    <input type="text" id="installer-path" class="form-control" placeholder="\\server\share\installers\setup.exe">
+                </div>
+                <div class="form-group">
+                    <label for="install-args">Installation Arguments</label>
+                    <input type="text" id="install-args" class="form-control" placeholder="/quiet /norestart">
+                </div>
+                <div class="form-group">
+                    <label for="verify-install">Verification Method</label>
+                    <select id="verify-install" class="form-control">
+                        <option value="none">None</option>
+                        <option value="exitcode">Exit Code</option>
+                        <option value="file">File Exists</option>
+                        <option value="registry">Registry Key</option>
+                    </select>
+                </div>
+                <div id="verification-details" class="hidden">
+                    <div class="form-group">
+                        <label for="verification-value">Verification Value</label>
+                        <input type="text" id="verification-value" class="form-control" placeholder="Path or Registry Key">
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary cancel-modal">Cancel</button>
+                <button id="save-application" class="btn btn-primary">Save</button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- File Copy Modal -->
+    <div class="modal" id="file-copy-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 class="modal-title">Add File Copy Task</h3>
+                <button class="modal-close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label for="source-path">Source Path (Network Share)</label>
+                    <input type="text" id="source-path" class="form-control" placeholder="\\server\share\files">
+                </div>
+                <div class="form-group">
+                    <label for="destination-path">Destination Path (Local)</label>
+                    <input type="text" id="destination-path" class="form-control" placeholder="C:\Program Files\App\Data">
+                </div>
+                <div class="form-group">
+                    <label for="file-pattern">File Pattern (Optional)</label>
+                    <input type="text" id="file-pattern" class="form-control" placeholder="*.xlsx, config.ini, data.*">
+                </div>
+                <div class="form-check">
+                    <input type="checkbox" id="include-subfolders" checked>
+                    <label for="include-subfolders">Include subfolders</label>
+                </div>
+                <div class="form-check">
+                    <input type="checkbox" id="overwrite-existing">
+                    <label for="overwrite-existing">Overwrite existing files</label>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary cancel-modal">Cancel</button>
+                <button id="save-file-copy" class="btn btn-primary">Save</button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Registry Entry Modal -->
+    <div class="modal" id="registry-entry-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 class="modal-title">Add Registry Entry</h3>
+                <button class="modal-close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label for="reg-hive">Registry Hive</label>
+                    <select id="reg-hive" class="form-control">
+                        <option value="HKLM:">HKEY_LOCAL_MACHINE</option>
+                        <option value="HKCU:">HKEY_CURRENT_USER</option>
+                        <option value="HKCR:">HKEY_CLASSES_ROOT</option>
+                        <option value="HKU:">HKEY_USERS</option>
+                        <option value="HKCC:">HKEY_CURRENT_CONFIG</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="reg-path">Registry Path</label>
+                    <input type="text" id="reg-path" class="form-control" placeholder="SOFTWARE\Microsoft\Windows\CurrentVersion">
+                </div>
+                <div class="form-group">
+                    <label for="reg-name">Value Name</label>
+                    <input type="text" id="reg-name" class="form-control" placeholder="EnableFeature">
+                </div>
+                <div class="form-group">
+                    <label for="reg-type">Value Type</label>
+                    <select id="reg-type" class="form-control">
+                        <option value="String">String (REG_SZ)</option>
+                        <option value="ExpandString">Expandable String (REG_EXPAND_SZ)</option>
+                        <option value="Binary">Binary (REG_BINARY)</option>
+                        <option value="DWord">DWORD (REG_DWORD)</option>
+                        <option value="QWord">QWORD (REG_QWORD)</option>
+                        <option value="MultiString">Multi-String (REG_MULTI_SZ)</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="reg-value">Value</label>
+                    <input type="text" id="reg-value" class="form-control" placeholder="Value data">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary cancel-modal">Cancel</button>
+                <button id="save-registry-entry" class="btn btn-primary">Save</button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Registry Import Modal -->
+    <div class="modal" id="registry-import-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 class="modal-title">Add Registry Import</h3>
+                <button class="modal-close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label for="reg-file-path">Registry File Path (.reg)</label>
+                    <input type="text" id="reg-file-path" class="form-control" placeholder="\\server\share\settings.reg">
+                </div>
+                <div class="form-group">
+                    <label for="reg-description">Description (Optional)</label>
+                    <input type="text" id="reg-description" class="form-control" placeholder="Application settings">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary cancel-modal">Cancel</button>
+                <button id="save-registry-import" class="btn btn-primary">Save</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Store all configuration data
+        const scriptData = {
+            networkDrives: [],
+            applications: [],
+            fileCopyTasks: [],
+            registryEntries: [],
+            registryImports: [],
+            fonts: {
+                source: '',
+                ttf: true,
+                otf: true,
+                allUsers: false
+            }
+        };
+        
+        // Initialize counters for dashboard
+        let counters = {
+            networkDrives: 0,
+            applications: 0,
+            fileCopyTasks: 0,
+            registryEntries: 0,
+            registryImports: 0
+        };
+        
+        // DOM Elements
+        const tabItems = document.querySelectorAll('.sidebar-menu-item');
+        const tabContents = document.querySelectorAll('.tab-content');
+        const generateScriptBtn = document.getElementById('generate-script');
+        const copyScriptBtn = document.getElementById('copy-script');
+        const downloadScriptBtn = document.getElementById('download-script');
+        
+        // Modals
+        const modals = document.querySelectorAll('.modal');
+        const closeModalBtns = document.querySelectorAll('.modal-close, .cancel-modal');
+        
+        // Network Drive Modal
+        const addNetworkDriveBtn = document.getElementById('add-network-drive');
+        const networkDriveModal = document.getElementById('network-drive-modal');
+        const saveNetworkDriveBtn = document.getElementById('save-network-drive');
+        const useCredentialsCheckbox = document.getElementById('use-credentials');
+        const credentialsSection = document.getElementById('credentials-section');
+        
+        // Application Modal
+        const addApplicationBtn = document.getElementById('add-application');
+        const applicationModal = document.getElementById('application-modal');
+        const saveApplicationBtn = document.getElementById('save-application');
+        const verifyInstallSelect = document.getElementById('verify-install');
+        const verificationDetails = document.getElementById('verification-details');
+        
+        // File Copy Modal
+        const addFileCopyBtn = document.getElementById('add-file-copy');
+        const fileCopyModal = document.getElementById('file-copy-modal');
+        const saveFileCopyBtn = document.getElementById('save-file-copy');
+        
+        // Registry Entry Modal
+        const addRegistryEntryBtn = document.getElementById('add-registry-entry');
+        const registryEntryModal = document.getElementById('registry-entry-modal');
+        const saveRegistryEntryBtn = document.getElementById('save-registry-entry');
+        
+        // Registry Import Modal
+        const addRegistryImportBtn = document.getElementById('add-registry-import');
+        const registryImportModal = document.getElementById('registry-import-modal');
+        const saveRegistryImportBtn = document.getElementById('save-registry-import');
+        
+        // Registry Type Tabs
+        const registryTypeTabs = document.querySelectorAll('[data-regtype]');
+        const registryManualPane = document.getElementById('registry-manual');
+        const registryImportPane = document.getElementById('registry-import');
+        
+        // Font Settings
+        const fontsSourceInput = document.getElementById('fonts-source');
+        const fontTtfCheckbox = document.getElementById('font-ttf');
+        const fontOtfCheckbox = document.getElementById('font-otf');
+        const installForAllUsersCheckbox = document.getElementById('install-for-all-users');
+        
+        // Code Preview Elements
+        const networkDrivesCode = document.getElementById('network-drives-code');
+        const applicationsCode = document.getElementById('applications-code');
+        const fileCopyCode = document.getElementById('file-copy-code');
+        const registryCode = document.getElementById('registry-code');
+        const fontsCode = document.getElementById('fonts-code');
+        const completeScript = document.getElementById('complete-script');
+        
+        // Lists
+        const networkDrivesList = document.getElementById('network-drives-list');
+        const applicationsList = document.getElementById('applications-list');
+        const fileCopyList = document.getElementById('file-copy-list');
+        const registryEntriesList = document.getElementById('registry-entries-list');
+        const registryImportsList = document.getElementById('registry-imports-list');
+        
+        // Dashboard counts
+        const networkDrivesCount = document.getElementById('dashboard-network-drives-count');
+        const applicationsCount = document.getElementById('dashboard-applications-count');
+        const fileCopyCount = document.getElementById('dashboard-file-copy-count');
+        const registryCount = document.getElementById('dashboard-registry-count');
+        const fontsCount = document.getElementById('dashboard-fonts-count');
+        
+        // Tab navigation
+        tabItems.forEach(item => {
+            item.addEventListener('click', () => {
+                const tabId = item.getAttribute('data-tab');
+                
+                // Remove active class from all tabs and contents
+                tabItems.forEach(tab => tab.classList.remove('active'));
+                tabContents.forEach(content => content.classList.remove('active'));
+                
+                // Add active class to selected tab and content
+                item.classList.add('active');
+                document.getElementById(tabId).classList.add('active');
+            });
+        });
+        
+        // Modal Functions
+        function openModal(modal) {
+            modal.classList.add('show');
+        }
+        
+        function closeAllModals() {
+            modals.forEach(modal => {
+                modal.classList.remove('show');
+            });
+        }
+        
+        closeModalBtns.forEach(btn => {
+            btn.addEventListener('click', closeAllModals);
+        });
+        
+        // Handle "Use Credentials" checkbox
+        useCredentialsCheckbox.addEventListener('change', () => {
+            if (useCredentialsCheckbox.checked) {
+                credentialsSection.classList.remove('hidden');
+            } else {
+                credentialsSection.classList.add('hidden');
+            }
+        });
+        
+        // Handle "Verify Install" dropdown
+        verifyInstallSelect.addEventListener('change', () => {
+            if (verifyInstallSelect.value !== 'none') {
+                verificationDetails.classList.remove('hidden');
+            } else {
+                verificationDetails.classList.add('hidden');
+            }
+        });
+        
+        // Registry type tabs
+        registryTypeTabs.forEach(tab => {
+            tab.addEventListener('click', () => {
+                const regType = tab.getAttribute('data-regtype');
+                
+                // Remove active class from all tabs
+                registryTypeTabs.forEach(t => t.classList.remove('active'));
+                
+                // Add active class to selected tab
+                tab.classList.add('active');
+                
+                // Show/hide corresponding pane
+                if (regType === 'manual') {
+                    registryManualPane.style.display = 'block';
+                    registryImportPane.style.display = 'none';
+                } else {
+                    registryManualPane.style.display = 'none';
+                    registryImportPane.style.display = 'block';
+                }
+            });
+        });
+        
+        // Open modals
+        addNetworkDriveBtn.addEventListener('click', () => openModal(networkDriveModal));
+        addApplicationBtn.addEventListener('click', () => openModal(applicationModal));
+        addFileCopyBtn.addEventListener('click', () => openModal(fileCopyModal));
+        addRegistryEntryBtn.addEventListener('click', () => openModal(registryEntryModal));
+        addRegistryImportBtn.addEventListener('click', () => openModal(registryImportModal));
+        
+        // Save Network Drive
+        saveNetworkDriveBtn.addEventListener('click', () => {
+            const driveLetter = document.getElementById('drive-letter').value;
+            const networkPath = document.getElementById('network-path').value;
+            const useCredentials = useCredentialsCheckbox.checked;
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+            const persistConnection = document.getElementById('persist-connection').checked;
+            
+            if (!networkPath) {
+                alert('Please enter a network path');
+                return;
+            }
+            
+            const drive = {
+                id: Date.now(),
+                driveLetter,
+                networkPath,
+                useCredentials,
+                username: useCredentials ? username : '',
+                password: useCredentials ? password : '',
+                persistConnection
+            };
+            
+            scriptData.networkDrives.push(drive);
+            updateNetworkDrivesList();
+            updateNetworkDrivesCode();
+            updateDashboardCounts();
+            clearNetworkDriveForm();
+            closeAllModals();
+        });
+        
+        // Save Application
+        saveApplicationBtn.addEventListener('click', () => {
+            const name = document.getElementById('app-name').value;
+            const installerPath = document.getElementById('installer-path').value;
+            const args = document.getElementById('install-args').value;
+            const verifyMethod = document.getElementById('verify-install').value;
+            const verificationValue = document.getElementById('verification-value').value;
+            
+            if (!name || !installerPath) {
+                alert('Please enter application name and installer path');
+                return;
+            }
+            
+            const app = {
+                id: Date.now(),
+                name,
+                installerPath,
+                args,
+                verifyMethod,
+                verificationValue: verifyMethod !== 'none' ? verificationValue : ''
+            };
+            
+            scriptData.applications.push(app);
+            updateApplicationsList();
+            updateApplicationsCode();
+            updateDashboardCounts();
+            clearApplicationForm();
+            closeAllModals();
+        });
+        
+        // Save File Copy
+        saveFileCopyBtn.addEventListener('click', () => {
+            const sourcePath = document.getElementById('source-path').value;
+            const destinationPath = document.getElementById('destination-path').value;
+            const filePattern = document.getElementById('file-pattern').value;
+            const includeSubfolders = document.getElementById('include-subfolders').checked;
+            const overwriteExisting = document.getElementById('overwrite-existing').checked;
+            
+            if (!sourcePath || !destinationPath) {
+                alert('Please enter source and destination paths');
+                return;
+            }
+            
+            const task = {
+                id: Date.now(),
+                sourcePath,
+                destinationPath,
+                filePattern,
+                includeSubfolders,
+                overwriteExisting
+            };
+            
+            scriptData.fileCopyTasks.push(task);
+            updateFileCopyList();
+            updateFileCopyCode();
+            updateDashboardCounts();
+            clearFileCopyForm();
+            closeAllModals();
+        });
+        
+        // Save Registry Entry
+        saveRegistryEntryBtn.addEventListener('click', () => {
+            const hive = document.getElementById('reg-hive').value;
+            const path = document.getElementById('reg-path').value;
+            const name = document.getElementById('reg-name').value;
+            const type = document.getElementById('reg-type').value;
+            const value = document.getElementById('reg-value').value;
+            
+            if (!path || !name) {
+                alert('Please enter registry path and value name');
+                return;
+            }
+            
+            const entry = {
+                id: Date.now(),
+                hive,
+                path,
+                name,
+                type,
+                value
+            };
+            
+            scriptData.registryEntries.push(entry);
+            updateRegistryEntriesList();
+            updateRegistryCode();
+            updateDashboardCounts();
+            clearRegistryEntryForm();
+            closeAllModals();
+        });
+        
+        // Save Registry Import
+        saveRegistryImportBtn.addEventListener('click', () => {
+            const filePath = document.getElementById('reg-file-path').value;
+            const description = document.getElementById('reg-description').value;
+            
+            if (!filePath) {
+                alert('Please enter registry file path');
+                return;
+            }
+            
+            const importEntry = {
+                id: Date.now(),
+                filePath,
+                description
+            };
+            
+            scriptData.registryImports.push(importEntry);
+            updateRegistryImportsList();
+            updateRegistryCode();
+            updateDashboardCounts();
+            clearRegistryImportForm();
+            closeAllModals();
+        });
+        
+        // Font settings change events
+        [fontsSourceInput, fontTtfCheckbox, fontOtfCheckbox, installForAllUsersCheckbox].forEach(el => {
+            el.addEventListener('change', () => {
+                scriptData.fonts = {
+                    source: fontsSourceInput.value,
+                    ttf: fontTtfCheckbox.checked,
+                    otf: fontOtfCheckbox.checked,
+                    allUsers: installForAllUsersCheckbox.checked
+                };
+                updateFontsCode();
+                updateDashboardCounts();
+            });
+        });
+        
+        // Generate complete script
+        generateScriptBtn.addEventListener('click', () => {
+            const scriptName = document.getElementById('script-name').value;
+            const author = document.getElementById('script-author').value;
+            const description = document.getElementById('script-description').value;
+            const includeLogging = document.getElementById('include-logging').checked;
+            const requireAdmin = document.getElementById('require-admin').checked;
+            
+            let script = generateFullScript(scriptName, author, description, includeLogging, requireAdmin);
+            completeScript.textContent = script;
+            
+            // Switch to Script Builder tab
+            tabItems.forEach(tab => tab.classList.remove('active'));
+            tabContents.forEach(content => content.classList.remove('active'));
+            
+            document.querySelector('[data-tab="script-builder"]').classList.add('active');
+            document.getElementById('script-builder').classList.add('active');
+        });
+        
+        // Copy script to clipboard
+        copyScriptBtn.addEventListener('click', () => {
+            const scriptText = completeScript.textContent;
+            navigator.clipboard.writeText(scriptText).then(() => {
+                alert('Script copied to clipboard!');
+            });
+        });
+        
+        // Download script
+        downloadScriptBtn.addEventListener('click', () => {
+            const scriptName = document.getElementById('script-name').value || 'System_Setup_Script';
+            const scriptText = completeScript.textContent;
+            const blob = new Blob([scriptText], { type: 'text/plain' });
+            
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = scriptName + '.ps1';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+        });
+        
+        // Update lists and code previews
+        function updateNetworkDrivesList() {
+            networkDrivesList.innerHTML = '';
+            
+            if (scriptData.networkDrives.length === 0) {
+                networkDrivesList.innerHTML = '<div class="list-group-item">No network drives configured</div>';
+                return;
+            }
+            
+            scriptData.networkDrives.forEach(drive => {
+                const item = document.createElement('div');
+                item.className = 'list-group-item';
+                item.innerHTML = `
+                    <div>
+                        <strong>${drive.driveLetter}</strong> → ${drive.networkPath}
+                        ${drive.useCredentials ? '<span class="badge badge-info" style="background-color: #dbeafe; color: #1e40af;">With Credentials</span>' : ''}
+                    </div>
+                    <div class="item-actions">
+                        <button class="btn btn-sm btn-danger delete-drive" data-id="${drive.id}">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                    </div>
+                `;
+                networkDrivesList.appendChild(item);
+            });
+            
+            // Add event listeners to delete buttons
+            document.querySelectorAll('.delete-drive').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const id = parseInt(btn.getAttribute('data-id'));
+                    scriptData.networkDrives = scriptData.networkDrives.filter(drive => drive.id !== id);
+                    updateNetworkDrivesList();
+                    updateNetworkDrivesCode();
+                    updateDashboardCounts();
+                });
+            });
+        }
+        
+        function updateApplicationsList() {
+            applicationsList.innerHTML = '';
+            
+            if (scriptData.applications.length === 0) {
+                applicationsList.innerHTML = '<div class="list-group-item">No applications configured</div>';
+                return;
+            }
+            
+            scriptData.applications.forEach(app => {
+                const item = document.createElement('div');
+                item.className = 'list-group-item';
+                item.innerHTML = `
+                    <div>
+                        <strong>${app.name}</strong> <br>
+                        <small>${app.installerPath} ${app.args}</small>
+                    </div>
+                    <div class="item-actions">
+                        <button class="btn btn-sm btn-danger delete-app" data-id="${app.id}">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                    </div>
+                `;
+                applicationsList.appendChild(item);
+            });
+            
+            // Add event listeners to delete buttons
+            document.querySelectorAll('.delete-app').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const id = parseInt(btn.getAttribute('data-id'));
+                    scriptData.applications = scriptData.applications.filter(app => app.id !== id);
+                    updateApplicationsList();
+                    updateApplicationsCode();
+                    updateDashboardCounts();
+                });
+            });
+        }
+        
+        function updateFileCopyList() {
+            fileCopyList.innerHTML = '';
+            
+            if (scriptData.fileCopyTasks.length === 0) {
+                fileCopyList.innerHTML = '<div class="list-group-item">No file copy tasks configured</div>';
+                return;
+            }
+            
+            scriptData.fileCopyTasks.forEach(task => {
+                const item = document.createElement('div');
+                item.className = 'list-group-item';
+                item.innerHTML = `
+                    <div>
+                        <strong>${task.sourcePath}</strong> → ${task.destinationPath}<br>
+                        <small>${task.filePattern ? 'Pattern: ' + task.filePattern : 'All files'} | 
+                        ${task.includeSubfolders ? 'With subfolders' : 'No subfolders'} | 
+                        ${task.overwriteExisting ? 'Overwrite existing' : 'Skip existing'}</small>
+                    </div>
+                    <div class="item-actions">
+                        <button class="btn btn-sm btn-danger delete-file-copy" data-id="${task.id}">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                    </div>
+                `;
+                fileCopyList.appendChild(item);
+            });
+            
+            // Add event listeners to delete buttons
+            document.querySelectorAll('.delete-file-copy').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const id = parseInt(btn.getAttribute('data-id'));
+                    scriptData.fileCopyTasks = scriptData.fileCopyTasks.filter(task => task.id !== id);
+                    updateFileCopyList();
+                    updateFileCopyCode();
+                    updateDashboardCounts();
+                });
+            });
+        }
+        
+        function updateRegistryEntriesList() {
+            registryEntriesList.innerHTML = '';
+            
+            if (scriptData.registryEntries.length === 0) {
+                registryEntriesList.innerHTML = '<div class="list-group-item">No registry entries configured</div>';
+                return;
+            }
+            
+            scriptData.registryEntries.forEach(entry => {
+                const item = document.createElement('div');
+                item.className = 'list-group-item';
+                item.innerHTML = `
+                    <div>
+                        <strong>${entry.hive}\\${entry.path}\\${entry.name}</strong><br>
+                        <small>Type: ${entry.type} | Value: ${entry.value}</small>
+                    </div>
+                    <div class="item-actions">
+                        <button class="btn btn-sm btn-danger delete-registry-entry" data-id="${entry.id}">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                    </div>
+                `;
+                registryEntriesList.appendChild(item);
+            });
+            
+            // Add event listeners to delete buttons
+            document.querySelectorAll('.delete-registry-entry').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const id = parseInt(btn.getAttribute('data-id'));
+                    scriptData.registryEntries = scriptData.registryEntries.filter(entry => entry.id !== id);
+                    updateRegistryEntriesList();
+                    updateRegistryCode();
+                    updateDashboardCounts();
+                });
+            });
+        }
+        
+        function updateRegistryImportsList() {
+            registryImportsList.innerHTML = '';
+            
+            if (scriptData.registryImports.length === 0) {
+                registryImportsList.innerHTML = '<div class="list-group-item">No registry imports configured</div>';
+                return;
+            }
+            
+            scriptData.registryImports.forEach(importEntry => {
+                const item = document.createElement('div');
+                item.className = 'list-group-item';
+                item.innerHTML = `
+                    <div>
+                        <strong>${importEntry.filePath}</strong><br>
+                        ${importEntry.description ? '<small>' + importEntry.description + '</small>' : ''}
+                    </div>
+                    <div class="item-actions">
+                        <button class="btn btn-sm btn-danger delete-registry-import" data-id="${importEntry.id}">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                    </div>
+                `;
+                registryImportsList.appendChild(item);
+            });
+            
+            // Add event listeners to delete buttons
+            document.querySelectorAll('.delete-registry-import').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const id = parseInt(btn.getAttribute('data-id'));
+                    scriptData.registryImports = scriptData.registryImports.filter(entry => entry.id !== id);
+                    updateRegistryImportsList();
+                    updateRegistryCode();
+                    updateDashboardCounts();
+                });
+            });
+        }
+        
+        // Update code previews
+        function updateNetworkDrivesCode() {
+            if (scriptData.networkDrives.length === 0) {
+                networkDrivesCode.textContent = '# No network drives configured yet';
+                return;
+            }
+            
+            let code = '# Network Drive Mapping\n';
+            code += 'function Map-NetworkDrives {\n';
+            code += '    Write-Host "Mapping network drives..." -ForegroundColor Cyan\n\n';
+            
+            scriptData.networkDrives.forEach(drive => {
+                code += `    # Map ${drive.driveLetter} to ${drive.networkPath}\n`;
+                
+                if (drive.useCredentials) {
+                    code += `    $username = "${drive.username}"\n`;
+                    code += `    $password = ConvertTo-SecureString "${drive.password}" -AsPlainText -Force\n`;
+                    code += `    $credential = New-Object System.Management.Automation.PSCredential($username, $password)\n\n`;
+                    code += `    try {\n`;
+                    code += `        New-PSDrive -Name "${drive.driveLetter.replace(':', '')}" -PSProvider FileSystem -Root "${drive.networkPath}" -Credential $credential -Persist:${drive.persistConnection} -ErrorAction Stop | Out-Null\n`;
+                    code += `        Write-Host "  Successfully mapped drive ${drive.driveLetter} to ${drive.networkPath}" -ForegroundColor Green\n`;
+                    code += `    } catch {\n`;
+                    code += `        Write-Host "  Failed to map drive ${drive.driveLetter} to ${drive.networkPath}: $_" -ForegroundColor Red\n`;
+                    code += `    }\n\n`;
+                } else {
+                    code += `    try {\n`;
+                    code += `        New-PSDrive -Name "${drive.driveLetter.replace(':', '')}" -PSProvider FileSystem -Root "${drive.networkPath}" -Persist:${drive.persistConnection} -ErrorAction Stop | Out-Null\n`;
+                    code += `        Write-Host "  Successfully mapped drive ${drive.driveLetter} to ${drive.networkPath}" -ForegroundColor Green\n`;
+                    code += `    } catch {\n`;
+                    code += `        Write-Host "  Failed to map drive ${drive.driveLetter} to ${drive.networkPath}: $_" -ForegroundColor Red\n`;
+                    code += `    }\n\n`;
+                }
+            });
+            
+            code += '    Write-Host "Network drive mapping completed" -ForegroundColor Cyan\n';
+            code += '}\n';
+            
+            networkDrivesCode.textContent = code;
+        }
+        
+        function updateApplicationsCode() {
+            if (scriptData.applications.length === 0) {
+                applicationsCode.textContent = '# No applications configured yet';
+                return;
+            }
+            
+            let code = '# Application Installation\n';
+            code += 'function Install-Applications {\n';
+            code += '    Write-Host "Installing applications..." -ForegroundColor Cyan\n\n';
+            
+            scriptData.applications.forEach(app => {
+                code += `    # Install ${app.name}\n`;
+                code += `    Write-Host "  Installing ${app.name}..." -ForegroundColor Yellow\n`;
+                code += `    try {\n`;
+                
+                if (app.args) {
+                    code += `        $process = Start-Process -FilePath "${app.installerPath}" -ArgumentList "${app.args}" -Wait -PassThru -ErrorAction Stop\n`;
+                } else {
+                    code += `        $process = Start-Process -FilePath "${app.installerPath}" -Wait -PassThru -ErrorAction Stop\n`;
+                }
+                
+                code += `        $exitCode = $process.ExitCode\n\n`;
+                
+                if (app.verifyMethod !== 'none') {
+                    code += `        # Verify installation\n`;
+                    
+                    if (app.verifyMethod === 'exitcode') {
+                        code += `        if ($exitCode -eq ${app.verificationValue}) {\n`;
+                        code += `            Write-Host "    ${app.name} installation successful (Exit code: $exitCode)" -ForegroundColor Green\n`;
+                        code += `        } else {\n`;
+                        code += `            Write-Host "    ${app.name} installation may have failed (Exit code: $exitCode)" -ForegroundColor Red\n`;
+                        code += `        }\n\n`;
+                    } else if (app.verifyMethod === 'file') {
+                        code += `        if (Test-Path -Path "${app.verificationValue}") {\n`;
+                        code += `            Write-Host "    ${app.name} installation successful (Verified file exists)" -ForegroundColor Green\n`;
+                        code += `        } else {\n`;
+                        code += `            Write-Host "    ${app.name} installation may have failed (File not found)" -ForegroundColor Red\n`;
+                        code += `        }\n\n`;
+                    } else if (app.verifyMethod === 'registry') {
+                        code += `        if (Test-Path -Path "${app.verificationValue}") {\n`;
+                        code += `            Write-Host "    ${app.name} installation successful (Verified registry key exists)" -ForegroundColor Green\n`;
+                        code += `        } else {\n`;
+                        code += `            Write-Host "    ${app.name} installation may have failed (Registry key not found)" -ForegroundColor Red\n`;
+                        code += `        }\n\n`;
+                    }
+                } else {
+                    code += `        Write-Host "    ${app.name} installation completed with exit code: $exitCode" -ForegroundColor Green\n\n`;
+                }
+                
+                code += `    } catch {\n`;
+                code += `        Write-Host "    Failed to install ${app.name}: $_" -ForegroundColor Red\n`;
+                code += `    }\n\n`;
+            });
+            
+            code += '    Write-Host "Application installation completed" -ForegroundColor Cyan\n';
+            code += '}\n';
+            
+            applicationsCode.textContent = code;
+        }
+        
+        function updateFileCopyCode() {
+            if (scriptData.fileCopyTasks.length === 0) {
+                fileCopyCode.textContent = '# No file copy tasks configured yet';
+                return;
+            }
+            
+            let code = '# File Copy Operations\n';
+            code += 'function Copy-ConfigFiles {\n';
+            code += '    Write-Host "Copying files..." -ForegroundColor Cyan\n\n';
+            
+            scriptData.fileCopyTasks.forEach(task => {
+                code += `    # Copy from ${task.sourcePath} to ${task.destinationPath}\n`;
+                code += `    Write-Host "  Copying files from ${task.sourcePath} to ${task.destinationPath}..." -ForegroundColor Yellow\n`;
+                
+                // Create destination directory if it doesn't exist
+                code += `    if (!(Test-Path -Path "${task.destinationPath}")) {\n`;
+                code += `        try {\n`;
+                code += `            New-Item -Path "${task.destinationPath}" -ItemType Directory -Force | Out-Null\n`;
+                code += `            Write-Host "    Created destination directory" -ForegroundColor Green\n`;
+                code += `        } catch {\n`;
+                code += `            Write-Host "    Failed to create destination directory: $_" -ForegroundColor Red\n`;
+                code += `            return\n`;
+                code += `        }\n`;
+                code += `    }\n\n`;
+                
+                // Copy files
+                code += `    try {\n`;
+                
+                const recursiveArg = task.includeSubfolders ? '-Recurse' : '';
+                const forceArg = task.overwriteExisting ? '-Force' : '';
+                
+                if (task.filePattern) {
+                    code += `        $sourceFiles = Get-ChildItem -Path "${task.sourcePath}" -Filter "${task.filePattern}" ${recursiveArg}\n`;
+                    code += `        foreach ($file in $sourceFiles) {\n`;
+                    code += `            $destinationFile = Join-Path -Path "${task.destinationPath}" -ChildPath $file.Name\n`;
+                    code += `            Copy-Item -Path $file.FullName -Destination $destinationFile ${forceArg}\n`;
+                    code += `        }\n`;
+                } else {
+                    code += `        Copy-Item -Path "${task.sourcePath}\\*" -Destination "${task.destinationPath}" ${recursiveArg} ${forceArg}\n`;
+                }
+                
+                code += `        Write-Host "    Files copied successfully" -ForegroundColor Green\n`;
+                code += `    } catch {\n`;
+                code += `        Write-Host "    Failed to copy files: $_" -ForegroundColor Red\n`;
+                code += `    }\n\n`;
+            });
+            
+            code += '    Write-Host "File copy operations completed" -ForegroundColor Cyan\n';
+            code += '}\n';
+            
+            fileCopyCode.textContent = code;
+        }
+        
+        function updateRegistryCode() {
+            if (scriptData.registryEntries.length === 0 && scriptData.registryImports.length === 0) {
+                registryCode.textContent = '# No registry entries configured yet';
+                return;
+            }
+            
+            let code = '# Registry Configuration\n';
+            code += 'function Configure-Registry {\n';
+            code += '    Write-Host "Configuring registry..." -ForegroundColor Cyan\n\n';
+            
+            // Manual registry entries
+            if (scriptData.registryEntries.length > 0) {
+                code += '    # Manual registry entries\n';
+                
+                scriptData.registryEntries.forEach(entry => {
+                    const fullPath = `${entry.hive}\\${entry.path}`;
+                    
+                    code += `    # Set ${fullPath}\\${entry.name}\n`;
+                    code += `    try {\n`;
+                    code += `        if (!(Test-Path -Path "${fullPath}")) {\n`;
+                    code += `            New-Item -Path "${fullPath}" -Force | Out-Null\n`;
+                    code += `        }\n`;
+                    
+                    // Different handling based on registry value type
+                    if (entry.type === 'DWord' || entry.type === 'QWord') {
+                        code += `        New-ItemProperty -Path "${fullPath}" -Name "${entry.name}" -PropertyType ${entry.type} -Value ${entry.value} -Force | Out-Null\n`;
+                    } else if (entry.type === 'Binary') {
+                        code += `        $binaryData = [byte[]]@(${entry.value})\n`;
+                        code += `        New-ItemProperty -Path "${fullPath}" -Name "${entry.name}" -PropertyType ${entry.type} -Value $binaryData -Force | Out-Null\n`;
+                    } else if (entry.type === 'MultiString') {
+                        code += `        $stringData = "${entry.value}".Split(',', [StringSplitOptions]::RemoveEmptyEntries)\n`;
+                        code += `        New-ItemProperty -Path "${fullPath}" -Name "${entry.name}" -PropertyType ${entry.type} -Value $stringData -Force | Out-Null\n`;
+                    } else {
+                        code += `        New-ItemProperty -Path "${fullPath}" -Name "${entry.name}" -PropertyType ${entry.type} -Value "${entry.value}" -Force | Out-Null\n`;
+                    }
+                    
+                    code += `        Write-Host "    Set registry value ${entry.name} successfully" -ForegroundColor Green\n`;
+                    code += `    } catch {\n`;
+                    code += `        Write-Host "    Failed to set registry value ${entry.name}: $_" -ForegroundColor Red\n`;
+                    code += `    }\n\n`;
+                });
+            }
+            
+            // Registry file imports
+            if (scriptData.registryImports.length > 0) {
+                code += '    # Registry file imports\n';
+                
+                scriptData.registryImports.forEach(importEntry => {
+                    const description = importEntry.description ? ` (${importEntry.description})` : '';
+                    
+                    code += `    # Import registry file: ${importEntry.filePath}${description}\n`;
+                    code += `    try {\n`;
+                    code += `        if (Test-Path -Path "${importEntry.filePath}") {\n`;
+                    code += `            $process = Start-Process -FilePath "regedit.exe" -ArgumentList "/s", "${importEntry.filePath}" -Wait -PassThru -ErrorAction Stop\n`;
+                    code += `            if ($process.ExitCode -eq 0) {\n`;
+                    code += `                Write-Host "    Imported registry file successfully${description}" -ForegroundColor Green\n`;
+                    code += `            } else {\n`;
+                    code += `                Write-Host "    Registry import may have failed (Exit code: $($process.ExitCode))${description}" -ForegroundColor Red\n`;
+                    code += `            }\n`;
+                    code += `        } else {\n`;
+                    code += `            Write-Host "    Registry file not found: ${importEntry.filePath}" -ForegroundColor Red\n`;
+                    code += `        }\n`;
+                    code += `    } catch {\n`;
+                    code += `        Write-Host "    Failed to import registry file: $_" -ForegroundColor Red\n`;
+                    code += `    }\n\n`;
+                });
+            }
+            
+            code += '    Write-Host "Registry configuration completed" -ForegroundColor Cyan\n';
+            code += '}\n';
+            
+            registryCode.textContent = code;
+        }
+        
+        function updateFontsCode() {
+            if (!scriptData.fonts.source) {
+                fontsCode.textContent = '# Configure font source location to see preview';
+                return;
+            }
+            
+            let code = '# Font Installation\n';
+            code += 'function Install-Fonts {\n';
+            code += '    Write-Host "Installing fonts..." -ForegroundColor Cyan\n\n';
+            
+            code += `    $fontSourcePath = "${scriptData.fonts.source}"\n`;
+            
+            if (scriptData.fonts.allUsers) {
+                code += '    $fontDestinationPath = [Environment]::GetFolderPath("Fonts")\n';
+                code += '    $registryPath = "HKLM:\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Fonts"\n';
+                code += '    # Note: Installing fonts for all users requires elevated privileges\n\n';
+            } else {
+                code += '    $fontDestinationPath = "$env:LOCALAPPDATA\\Microsoft\\Windows\\Fonts"\n';
+                code += '    $registryPath = "HKCU:\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Fonts"\n\n';
+                code += '    # Create font directory if it doesn\'t exist\n';
+                code += '    if (!(Test-Path -Path $fontDestinationPath)) {\n';
+                code += '        New-Item -Path $fontDestinationPath -ItemType Directory -Force | Out-Null\n';
+                code += '    }\n\n';
+            }
+            
+            let filters = [];
+            if (scriptData.fonts.ttf) filters.push("'*.ttf'");
+            if (scriptData.fonts.otf) filters.push("'*.otf'");
+            
+            code += `    $fontFilter = @(${filters.join(', ')})\n`;
+            code += '    $fontsToInstall = Get-ChildItem -Path $fontSourcePath -Include $fontFilter -File\n\n';
+            
+            code += '    foreach ($font in $fontsToInstall) {\n';
+            code += '        $fontName = $font.Name\n';
+            code += '        $fontDestination = Join-Path -Path $fontDestinationPath -ChildPath $fontName\n\n';
+            
+            code += '        try {\n';
+            code += '            # Copy font file to destination\n';
+            code += '            Copy-Item -Path $font.FullName -Destination $fontDestination -Force\n\n';
+            
+            code += '            # Add registry entry\n';
+            code += '            $fontNameWithoutExt = [System.IO.Path]::GetFileNameWithoutExtension($fontName)\n';
+            code += '            if ($font.Extension -eq ".ttf") {\n';
+            code += '                $registryValue = "$fontNameWithoutExt (TrueType)"\n';
+            code += '            } elseif ($font.Extension -eq ".otf") {\n';
+            code += '                $registryValue = "$fontNameWithoutExt (OpenType)"\n';
+            code += '            } else {\n';
+            code += '                $registryValue = $fontNameWithoutExt\n';
+            code += '            }\n\n';
+            
+            // For all users, we just need the font name as the value
+            if (scriptData.fonts.allUsers) {
+                code += '            New-ItemProperty -Path $registryPath -Name $registryValue -PropertyType String -Value $fontName -Force | Out-Null\n';
+            } else {
+                // For current user, need the full path to the font
+                code += '            New-ItemProperty -Path $registryPath -Name $registryValue -PropertyType String -Value $fontDestination -Force | Out-Null\n';
+            }
+            
+            code += '            Write-Host "    Installed font: $fontName" -ForegroundColor Green\n';
+            code += '        } catch {\n';
+            code += '            Write-Host "    Failed to install font $fontName: $_" -ForegroundColor Red\n';
+            code += '        }\n';
+            code += '    }\n\n';
+            
+            code += '    Write-Host "Font installation completed" -ForegroundColor Cyan\n';
+            code += '}\n';
+            
+            fontsCode.textContent = code;
+        }
+        
+        // Generate full script
+        function generateFullScript(name, author, description, includeLogging, requireAdmin) {
+            const date = new Date().toISOString().split('T')[0];
+            
+            let script = '';
+            
+            // Script header
+            script += `<#\n`;
+            script += `.SYNOPSIS\n`;
+            script += `    ${name}\n\n`;
+            script += `.DESCRIPTION\n`;
+            script += `    ${description || 'System setup and configuration script'}\n\n`;
+            script += `.NOTES\n`;
+            script += `    File Name  : ${name}.ps1\n`;
+            script += `    Author     : ${author || 'System Administrator'}\n`;
+            script += `    Date       : ${date}\n`;
+            script += `#>\n\n`;
+            
+            // Check for admin rights
+            if (requireAdmin) {
+                script += `# Check for administrator privileges\n`;
+                script += `$isAdmin = ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)\n`;
+                script += `if (-not $isAdmin) {\n`;
+                script += `    Write-Host "This script requires administrator privileges. Please run as Administrator." -ForegroundColor Red\n`;
+                script += `    exit 1\n`;
+                script += `}\n\n`;
+            }
+            
+            // Logging setup
+            if (includeLogging) {
+                script += `# Setup logging\n`;
+                script += `$logFile = "$(Split-Path -Parent $MyInvocation.MyCommand.Definition)\\${name}_$(Get-Date -Format 'yyyyMMdd_HHmmss').log"\n`;
+                script += `function Write-Log {\n`;
+                script += `    param(\n`;
+                script += `        [Parameter(Mandatory=$true)]\n`;
+                script += `        [string]$Message,\n`;
+                script += `        [string]$ForegroundColor = "White"\n`;
+                script += `    )\n`;
+                script += `    $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"\n`;
+                script += `    Write-Host "[$timestamp] $Message" -ForegroundColor $ForegroundColor\n`;
+                script += `    "[$timestamp] $Message" | Out-File -FilePath $logFile -Append\n`;
+                script += `}\n\n`;
+                
+                // Override Write-Host with Write-Log
+                script += `# Override Write-Host to use Write-Log\n`;
+                script += `function global:Write-Host {\n`;
+                script += `    param(\n`;
+                script += `        [Parameter(Position=0, ValueFromPipeline=$true)]\n`;
+                script += `        [object]$Object,\n`;
+                script += `        [switch]$NoNewline,\n`;
+                script += `        [string]$ForegroundColor = "White",\n`;
+                script += `        [string]$BackgroundColor,\n`;
+                script += `        [string]$Separator\n`;
+                script += `    )\n`;
+                script += `    Write-Log -Message $Object -ForegroundColor $ForegroundColor\n`;
+                script += `}\n\n`;
+            }
+            
+            // Add function definitions
+            if (scriptData.networkDrives.length > 0) {
+                script += networkDrivesCode.textContent + '\n';
+            }
+            
+            if (scriptData.applications.length > 0) {
+                script += applicationsCode.textContent + '\n';
+            }
+            
+            if (scriptData.fileCopyTasks.length > 0) {
+                script += fileCopyCode.textContent + '\n';
+            }
+            
+            if (scriptData.registryEntries.length > 0 || scriptData.registryImports.length > 0) {
+                script += registryCode.textContent + '\n';
+            }
+            
+            if (scriptData.fonts.source) {
+                script += fontsCode.textContent + '\n';
+            }
+            
+            // Main execution block
+            script += `# Main script execution\n`;
+            script += `Write-Host "Starting ${name} execution..." -ForegroundColor Cyan\n`;
+            script += `$stopwatch = [System.Diagnostics.Stopwatch]::StartNew()\n\n`;
+            
+            // Call functions in order
+            if (scriptData.networkDrives.length > 0) {
+                script += `Map-NetworkDrives\n`;
+            }
+            
+            if (scriptData.applications.length > 0) {
+                script += `Install-Applications\n`;
+            }
+            
+            if (scriptData.fileCopyTasks.length > 0) {
+                script += `Copy-ConfigFiles\n`;
+            }
+            
+            if (scriptData.registryEntries.length > 0 || scriptData.registryImports.length > 0) {
+                script += `Configure-Registry\n`;
+            }
+            
+            if (scriptData.fonts.source) {
+                script += `Install-Fonts\n`;
+            }
+            
+            // Completion message
+            script += `\n$stopwatch.Stop()\n`;
+            script += `$elapsedTime = $stopwatch.Elapsed\n`;
+            script += `Write-Host "Script execution completed in $($elapsedTime.Hours):$($elapsedTime.Minutes):$($elapsedTime.Seconds)" -ForegroundColor Green\n`;
+            
+            if (includeLogging) {
+                script += `Write-Host "Log file created at: $logFile" -ForegroundColor Cyan\n`;
+            }
+            
+            return script;
+        }
+        
+        // Form clearing functions
+        function clearNetworkDriveForm() {
+            document.getElementById('drive-letter').value = 'Z:';
+            document.getElementById('network-path').value = '';
+            document.getElementById('use-credentials').checked = false;
+            document.getElementById('username').value = '';
+            document.getElementById('password').value = '';
+            document.getElementById('persist-connection').checked = false;
+            credentialsSection.classList.add('hidden');
+        }
+        
+        function clearApplicationForm() {
+            document.getElementById('app-name').value = '';
+            document.getElementById('installer-path').value = '';
+            document.getElementById('install-args').value = '';
+            document.getElementById('verify-install').value = 'none';
+            document.getElementById('verification-value').value = '';
+            verificationDetails.classList.add('hidden');
+        }
+        
+        function clearFileCopyForm() {
+            document.getElementById('source-path').value = '';
+            document.getElementById('destination-path').value = '';
+            document.getElementById('file-pattern').value = '';
+            document.getElementById('include-subfolders').checked = true;
+            document.getElementById('overwrite-existing').checked = false;
+        }
+        
+        function clearRegistryEntryForm() {
+            document.getElementById('reg-hive').value = 'HKLM:';
+            document.getElementById('reg-path').value = '';
+            document.getElementById('reg-name').value = '';
+            document.getElementById('reg-type').value = 'String';
+            document.getElementById('reg-value').value = '';
+        }
+        
+        function clearRegistryImportForm() {
+            document.getElementById('reg-file-path').value = '';
+            document.getElementById('reg-description').value = '';
+        }
+        
+        // Update dashboard counts
+        function updateDashboardCounts() {
+            // Update counters
+            counters.networkDrives = scriptData.networkDrives.length;
+            counters.applications = scriptData.applications.length;
+            counters.fileCopyTasks = scriptData.fileCopyTasks.length;
+            counters.registryEntries = scriptData.registryEntries.length + scriptData.registryImports.length;
+            
+            // Update badge classes and text
+            updateCounterBadge(networkDrivesCount, counters.networkDrives, 'network drives');
+            updateCounterBadge(applicationsCount, counters.applications, 'applications');
+            updateCounterBadge(fileCopyCount, counters.fileCopyTasks, 'copy tasks');
+            updateCounterBadge(registryCount, counters.registryEntries, 'registry entries');
+            
+            // Font setting
+            if (scriptData.fonts.source) {
+                fontsCount.textContent = 'Configured';
+                fontsCount.className = 'badge badge-success';
+            } else {
+                fontsCount.textContent = 'Not configured';
+                fontsCount.className = 'badge badge-warning';
+            }
+        }
+        
+        function updateCounterBadge(element, count, label) {
+            if (count === 0) {
+                element.textContent = `0 ${label}`;
+                element.className = 'badge badge-warning';
+            } else {
+                element.textContent = `${count} ${label}`;
+                element.className = 'badge badge-success';
+            }
+        }
+        
+        // Initialize the UI
+        updateNetworkDrivesList();
+        updateApplicationsList();
+        updateFileCopyList();
+        updateRegistryEntriesList();
+        updateRegistryImportsList();
+        updateDashboardCounts();
+    </script>
+</body>
+</html>
