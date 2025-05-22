@@ -1,12 +1,12 @@
 param (
-    [Parameter(Mandatory=$true)]
-    [string]$SourceFolder,
-    
-    [Parameter(Mandatory=$true)]
-    [string]$BackupDestination,
+    [Parameter(Mandatory=$false)]
+    [string]$SourceFolder = "D:\WEMData",
     
     [Parameter(Mandatory=$false)]
-    [string]$LogFile = "$env:TEMP\FolderBackup_$(Get-Date -Format 'yyyyMMdd').log"
+    [string]$BackupDestination = "D:\Backup\WEMDataBackup",
+    
+    [Parameter(Mandatory=$false)]
+    [string]$LogFile = "D:\Logs\WEMBackup\WEMData_Backup_$(Get-Date -Format 'yyyyMMdd').log"
 )
 
 # Function to write to log file
@@ -14,6 +14,12 @@ function Write-Log {
     param (
         [string]$Message
     )
+    
+    # Ensure log directory exists
+    $LogDirectory = Split-Path -Path $LogFile -Parent
+    if (-not (Test-Path -Path $LogDirectory)) {
+        New-Item -Path $LogDirectory -ItemType Directory -Force | Out-Null
+    }
     
     $TimeStamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
     "$TimeStamp - $Message" | Out-File -FilePath $LogFile -Append
@@ -50,7 +56,7 @@ function Create-Backup {
     try {
         # Create timestamp for the backup file name
         $timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
-        $zipFileName = "Backup_$timestamp.zip"
+        $zipFileName = "WEMData_Backup_$timestamp.zip"
         $zipFilePath = Join-Path -Path $Destination -ChildPath $zipFileName
         
         # Ensure the destination directory exists
@@ -93,15 +99,15 @@ try {
     
     # Validate folders
     if (-not (Test-Path -Path $SourceFolder)) {
-        Write-Log "Source folder does not exist: $SourceFolder"
+        Write-Log "WEMData source folder does not exist: $SourceFolder"
         exit 1
     }
     
     # Define state file location
-    $stateFile = Join-Path -Path $env:TEMP -ChildPath "FolderBackupState_$(Split-Path -Path $SourceFolder -Leaf).json"
+    $stateFile = Join-Path -Path $env:TEMP -ChildPath "WEMData_BackupState.json"
     
     # Check if changes have occurred
-    Write-Log "Checking for changes in: $SourceFolder"
+    Write-Log "Checking for changes in WEMData folder and all subfolders: $SourceFolder"
     if (HasChangesOccurred -Folder $SourceFolder -StateFile $stateFile) {
         Write-Log "Changes detected, creating backup"
         
