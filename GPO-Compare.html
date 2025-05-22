@@ -1,0 +1,918 @@
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GPO Settings Comparison Tool</title>
+    <!-- Bootstrap CSS (Replit Dark Theme) -->
+    <link href="https://cdn.replit.com/agent/bootstrap-agent-dark-theme.min.css" rel="stylesheet">
+    <!-- Font Awesome for icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Diff Match Patch Library -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/diff_match_patch/20121119/diff_match_patch_uncompressed.js"></script>
+    <!-- FileSaver Library for exports -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+    
+    <style>
+        /* General styles */
+        body {
+            min-height: 100vh;
+        }
+        
+        /* Diff display styles */
+        .diff-result {
+            overflow-x: auto;
+            min-height: 300px;
+            max-height: 500px;
+            overflow-y: auto;
+        }
+        
+        .diff-table {
+            width: 100%;
+            font-family: monospace;
+            border-collapse: collapse;
+        }
+        
+        .diff-table td {
+            padding: 2px 5px;
+            white-space: pre-wrap;
+            word-break: break-all;
+        }
+        
+        .diff-line-number {
+            min-width: 40px;
+            text-align: right;
+            color: var(--bs-secondary);
+            user-select: none;
+            border-right: 1px solid var(--bs-dark);
+        }
+        
+        .diff-content {
+            width: 50%;
+        }
+        
+        .diff-added {
+            background-color: rgba(40, 167, 69, 0.2);
+        }
+        
+        .diff-deleted {
+            background-color: rgba(220, 53, 69, 0.2);
+        }
+        
+        .diff-changed {
+            background-color: rgba(255, 193, 7, 0.2);
+        }
+        
+        /* Inline diff styles */
+        .inline-diff-added {
+            background-color: rgba(40, 167, 69, 0.3);
+            text-decoration: none;
+        }
+        
+        .inline-diff-deleted {
+            background-color: rgba(220, 53, 69, 0.3);
+            text-decoration: line-through;
+        }
+        
+        /* Responsive adjustments */
+        @media (max-width: 768px) {
+            .diff-content {
+                font-size: 0.8rem;
+            }
+        }
+        
+        /* Dark mode specific adjustments */
+        [data-bs-theme="dark"] .card {
+            background-color: var(--bs-dark);
+            border-color: var(--bs-gray-800);
+        }
+        
+        [data-bs-theme="dark"] .card-header {
+            background-color: rgba(0,0,0,0.2);
+            border-bottom-color: var(--bs-gray-800);
+        }
+        
+        /* Loading indicator */
+        .loading-spinner {
+            display: inline-block;
+            width: 2rem;
+            height: 2rem;
+            border: 0.25em solid rgba(255, 255, 255, 0.2);
+            border-right-color: var(--bs-primary);
+            border-radius: 50%;
+            animation: spinner-border 0.75s linear infinite;
+        }
+        
+        @keyframes spinner-border {
+            to { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div class="container-fluid py-4">
+        <header class="mb-4">
+            <h1 class="text-center"><i class="fas fa-exchange-alt me-2"></i>GPO Settings Comparison Tool</h1>
+            <p class="text-center text-muted">Compare two Group Policy Objects or templates to highlight their differences</p>
+        </header>
+
+        <div class="row">
+            <!-- Input Section -->
+            <div class="col-12 mb-4">
+                <div class="card">
+                    <div class="card-header">
+                        <ul class="nav nav-tabs card-header-tabs" id="inputTabs" role="tablist">
+                            <li class="nav-item" role="presentation">
+                                <button class="nav-link active" id="text-tab" data-bs-toggle="tab" data-bs-target="#text-input" type="button" role="tab" aria-controls="text-input" aria-selected="true">
+                                    <i class="fas fa-edit me-1"></i> Text Input
+                                </button>
+                            </li>
+                            <li class="nav-item" role="presentation">
+                                <button class="nav-link" id="file-tab" data-bs-toggle="tab" data-bs-target="#file-input" type="button" role="tab" aria-controls="file-input" aria-selected="false">
+                                    <i class="fas fa-file-upload me-1"></i> File Upload
+                                </button>
+                            </li>
+                        </ul>
+                    </div>
+                    <div class="card-body">
+                        <div class="tab-content" id="inputTabContent">
+                            <!-- Text Input Tab -->
+                            <div class="tab-pane fade show active" id="text-input" role="tabpanel" aria-labelledby="text-tab">
+                                <div class="row">
+                                    <div class="col-md-6 mb-3">
+                                        <label for="leftInput" class="form-label">First GPO Settings/Template:</label>
+                                        <textarea class="form-control" id="leftInput" rows="10" placeholder="Paste your first GPO settings or template here..."></textarea>
+                                    </div>
+                                    <div class="col-md-6 mb-3">
+                                        <label for="rightInput" class="form-label">Second GPO Settings/Template:</label>
+                                        <textarea class="form-control" id="rightInput" rows="10" placeholder="Paste your second GPO settings or template here..."></textarea>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- File Upload Tab -->
+                            <div class="tab-pane fade" id="file-input" role="tabpanel" aria-labelledby="file-tab">
+                                <div class="row">
+                                    <div class="col-md-6 mb-3">
+                                        <label for="leftFile" class="form-label">First GPO Settings/Template File:</label>
+                                        <input class="form-control" type="file" id="leftFile">
+                                    </div>
+                                    <div class="col-md-6 mb-3">
+                                        <label for="rightFile" class="form-label">Second GPO Settings/Template File:</label>
+                                        <input class="form-control" type="file" id="rightFile">
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="d-flex justify-content-center mt-3">
+                            <button id="compareButton" class="btn btn-primary">
+                                <i class="fas fa-exchange-alt me-1"></i> Compare
+                            </button>
+                            <button id="clearButton" class="btn btn-secondary ms-2">
+                                <i class="fas fa-eraser me-1"></i> Clear
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Settings Section -->
+            <div class="col-12 mb-4">
+                <div class="card">
+                    <div class="card-header">
+                        <h5><i class="fas fa-sliders-h me-2"></i>Comparison Settings</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-4 mb-3">
+                                <div class="form-check form-switch">
+                                    <input class="form-check-input" type="checkbox" id="ignoreWhitespace" checked>
+                                    <label class="form-check-label" for="ignoreWhitespace">Ignore Whitespace</label>
+                                </div>
+                            </div>
+                            <div class="col-md-4 mb-3">
+                                <div class="form-check form-switch">
+                                    <input class="form-check-input" type="checkbox" id="ignoreCase">
+                                    <label class="form-check-label" for="ignoreCase">Ignore Case</label>
+                                </div>
+                            </div>
+                            <div class="col-md-4 mb-3">
+                                <select class="form-select" id="displayMode">
+                                    <option value="sideBySide" selected>Side by Side</option>
+                                    <option value="inline">Inline</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <div class="input-group">
+                                    <span class="input-group-text">Filter:</span>
+                                    <input type="text" class="form-control" id="filterText" placeholder="Enter text to filter results...">
+                                </div>
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <div class="d-flex">
+                                    <div class="form-check me-3">
+                                        <input class="form-check-input" type="checkbox" id="showAdditions" checked>
+                                        <label class="form-check-label" for="showAdditions">
+                                            <span class="badge bg-success">Added</span>
+                                        </label>
+                                    </div>
+                                    <div class="form-check me-3">
+                                        <input class="form-check-input" type="checkbox" id="showDeletions" checked>
+                                        <label class="form-check-label" for="showDeletions">
+                                            <span class="badge bg-danger">Deleted</span>
+                                        </label>
+                                    </div>
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" id="showChanges" checked>
+                                        <label class="form-check-label" for="showChanges">
+                                            <span class="badge bg-warning">Changed</span>
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Results Section -->
+            <div class="col-12 mb-4">
+                <div class="card">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <h5><i class="fas fa-search me-2"></i>Comparison Results</h5>
+                        <div>
+                            <button id="exportButton" class="btn btn-sm btn-info" disabled>
+                                <i class="fas fa-download me-1"></i> Export
+                            </button>
+                        </div>
+                    </div>
+                    <div class="card-body p-0">
+                        <div id="diffResult" class="diff-result">
+                            <div class="text-center py-5">
+                                <i class="fas fa-file-alt fs-1 mb-3 text-muted"></i>
+                                <p class="text-muted">Click 'Compare' to see the differences between your GPO settings or templates.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Statistics Section -->
+            <div class="col-12 mb-4">
+                <div class="card">
+                    <div class="card-header">
+                        <h5><i class="fas fa-chart-pie me-2"></i>Comparison Statistics</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="row text-center" id="stats">
+                            <div class="col-md-3 mb-3">
+                                <div class="card bg-dark">
+                                    <div class="card-body">
+                                        <h5 class="card-title">Total Lines</h5>
+                                        <p class="card-text fs-4" id="totalLines">0</p>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-3 mb-3">
+                                <div class="card bg-success bg-opacity-25">
+                                    <div class="card-body">
+                                        <h5 class="card-title">Additions</h5>
+                                        <p class="card-text fs-4" id="addedLines">0</p>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-3 mb-3">
+                                <div class="card bg-danger bg-opacity-25">
+                                    <div class="card-body">
+                                        <h5 class="card-title">Deletions</h5>
+                                        <p class="card-text fs-4" id="deletedLines">0</p>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-3 mb-3">
+                                <div class="card bg-warning bg-opacity-25">
+                                    <div class="card-body">
+                                        <h5 class="card-title">Changes</h5>
+                                        <p class="card-text fs-4" id="changedLines">0</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <footer class="text-center text-muted mt-4 mb-4">
+            <p>GPO Settings Comparison Tool | <i class="fas fa-shield-alt"></i> Helps identify differences between Group Policy settings</p>
+        </footer>
+    </div>
+
+    <!-- Bootstrap JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    
+    <!-- JavaScript for Comparison Tool -->
+    <script>
+        // DiffUtil Class for handling text comparisons
+        class DiffUtil {
+            constructor() {
+                this.dmp = new diff_match_patch();
+            }
+
+            // Compare two text inputs and generate differences
+            compareTexts(text1, text2, options = {}) {
+                const { ignoreWhitespace = true, ignoreCase = false } = options;
+                
+                // Pre-process text based on options
+                let processedText1 = text1;
+                let processedText2 = text2;
+                
+                if (ignoreWhitespace) {
+                    // Normalize whitespace but don't remove it completely
+                    processedText1 = this._normalizeWhitespace(processedText1);
+                    processedText2 = this._normalizeWhitespace(processedText2);
+                }
+                
+                if (ignoreCase) {
+                    processedText1 = processedText1.toLowerCase();
+                    processedText2 = processedText2.toLowerCase();
+                }
+                
+                // Split into lines for line-by-line comparison
+                const lines1 = processedText1.split('\n');
+                const lines2 = processedText2.split('\n');
+                
+                // Get line-level diffs
+                const diffs = this._getLineDiffs(lines1, lines2);
+                
+                // Calculate statistics
+                const stats = this._calculateStats(diffs);
+                
+                return {
+                    diffs,
+                    stats,
+                    originalText1: text1,
+                    originalText2: text2
+                };
+            }
+            
+            // Generate HTML for side-by-side comparison
+            generateSideBySideHTML(result, options = {}) {
+                const { showAdditions = true, showDeletions = true, showChanges = true, filterText = '' } = options;
+                const { diffs } = result;
+                
+                let html = '<table class="diff-table">';
+                html += '<thead><tr>' +
+                        '<th class="diff-line-number">Line</th>' +
+                        '<th class="diff-content">First GPO Template</th>' +
+                        '<th class="diff-line-number">Line</th>' +
+                        '<th class="diff-content">Second GPO Template</th>' +
+                        '</tr></thead><tbody>';
+                
+                let leftLineNum = 1;
+                let rightLineNum = 1;
+                
+                for (const diff of diffs) {
+                    let showLine = true;
+                    
+                    // Apply filters
+                    if (filterText && !(diff.text1?.includes(filterText) || diff.text2?.includes(filterText))) {
+                        showLine = false;
+                    }
+                    
+                    if (!showAdditions && diff.type === 'added') showLine = false;
+                    if (!showDeletions && diff.type === 'deleted') showLine = false;
+                    if (!showChanges && diff.type === 'changed') showLine = false;
+                    
+                    if (!showLine) {
+                        // Update line numbers even if we don't show the line
+                        if (diff.type !== 'added') leftLineNum++;
+                        if (diff.type !== 'deleted') rightLineNum++;
+                        continue;
+                    }
+                    
+                    let leftClass = '';
+                    let rightClass = '';
+                    
+                    switch (diff.type) {
+                        case 'unchanged':
+                            html += `<tr>
+                                <td class="diff-line-number">${leftLineNum}</td>
+                                <td class="diff-content">${this._escapeHTML(diff.text1)}</td>
+                                <td class="diff-line-number">${rightLineNum}</td>
+                                <td class="diff-content">${this._escapeHTML(diff.text2)}</td>
+                            </tr>`;
+                            leftLineNum++;
+                            rightLineNum++;
+                            break;
+                            
+                        case 'added':
+                            html += `<tr>
+                                <td class="diff-line-number"></td>
+                                <td class="diff-content"></td>
+                                <td class="diff-line-number">${rightLineNum}</td>
+                                <td class="diff-content diff-added">${this._escapeHTML(diff.text2)}</td>
+                            </tr>`;
+                            rightLineNum++;
+                            break;
+                            
+                        case 'deleted':
+                            html += `<tr>
+                                <td class="diff-line-number">${leftLineNum}</td>
+                                <td class="diff-content diff-deleted">${this._escapeHTML(diff.text1)}</td>
+                                <td class="diff-line-number"></td>
+                                <td class="diff-content"></td>
+                            </tr>`;
+                            leftLineNum++;
+                            break;
+                            
+                        case 'changed':
+                            // For changed lines, show the character-level diff
+                            const charDiffs = this.dmp.diff_main(diff.text1, diff.text2);
+                            this.dmp.diff_cleanupSemantic(charDiffs);
+                            
+                            const leftText = this._formatCharDiffs(charDiffs, true);
+                            const rightText = this._formatCharDiffs(charDiffs, false);
+                            
+                            html += `<tr>
+                                <td class="diff-line-number">${leftLineNum}</td>
+                                <td class="diff-content diff-changed">${leftText}</td>
+                                <td class="diff-line-number">${rightLineNum}</td>
+                                <td class="diff-content diff-changed">${rightText}</td>
+                            </tr>`;
+                            leftLineNum++;
+                            rightLineNum++;
+                            break;
+                    }
+                }
+                
+                html += '</tbody></table>';
+                return html;
+            }
+            
+            // Generate HTML for inline comparison
+            generateInlineHTML(result, options = {}) {
+                const { showAdditions = true, showDeletions = true, showChanges = true, filterText = '' } = options;
+                const { diffs } = result;
+                
+                let html = '<table class="diff-table">';
+                html += '<thead><tr>' +
+                        '<th class="diff-line-number">Line</th>' +
+                        '<th class="diff-content">Content</th>' +
+                        '</tr></thead><tbody>';
+                
+                let lineNum = 1;
+                
+                for (const diff of diffs) {
+                    let showLine = true;
+                    
+                    // Apply filters
+                    if (filterText && !(diff.text1?.includes(filterText) || diff.text2?.includes(filterText))) {
+                        showLine = false;
+                    }
+                    
+                    if (!showAdditions && diff.type === 'added') showLine = false;
+                    if (!showDeletions && diff.type === 'deleted') showLine = false;
+                    if (!showChanges && diff.type === 'changed') showLine = false;
+                    
+                    if (!showLine) {
+                        // Update line numbers for unchanged lines only
+                        if (diff.type === 'unchanged') lineNum++;
+                        continue;
+                    }
+                    
+                    let cssClass = '';
+                    let content = '';
+                    
+                    switch (diff.type) {
+                        case 'unchanged':
+                            html += `<tr>
+                                <td class="diff-line-number">${lineNum}</td>
+                                <td class="diff-content">${this._escapeHTML(diff.text1)}</td>
+                            </tr>`;
+                            lineNum++;
+                            break;
+                            
+                        case 'added':
+                            html += `<tr>
+                                <td class="diff-line-number">${lineNum}</td>
+                                <td class="diff-content diff-added">${this._escapeHTML(diff.text2)} <span class="badge bg-success">Added</span></td>
+                            </tr>`;
+                            lineNum++;
+                            break;
+                            
+                        case 'deleted':
+                            html += `<tr>
+                                <td class="diff-line-number">${lineNum}</td>
+                                <td class="diff-content diff-deleted">${this._escapeHTML(diff.text1)} <span class="badge bg-danger">Deleted</span></td>
+                            </tr>`;
+                            lineNum++;
+                            break;
+                            
+                        case 'changed':
+                            // For changed lines, show the character-level diff inline
+                            const charDiffs = this.dmp.diff_main(diff.text1, diff.text2);
+                            this.dmp.diff_cleanupSemantic(charDiffs);
+                            
+                            let inlineText = '';
+                            charDiffs.forEach(([op, text]) => {
+                                const escapedText = this._escapeHTML(text);
+                                if (op === -1) {
+                                    inlineText += `<span class="inline-diff-deleted">${escapedText}</span>`;
+                                } else if (op === 1) {
+                                    inlineText += `<span class="inline-diff-added">${escapedText}</span>`;
+                                } else {
+                                    inlineText += escapedText;
+                                }
+                            });
+                            
+                            html += `<tr>
+                                <td class="diff-line-number">${lineNum}</td>
+                                <td class="diff-content diff-changed">${inlineText} <span class="badge bg-warning">Changed</span></td>
+                            </tr>`;
+                            lineNum++;
+                            break;
+                    }
+                }
+                
+                html += '</tbody></table>';
+                return html;
+            }
+            
+            // Generate export content with differences
+            generateExportContent(result) {
+                const { diffs, stats } = result;
+                let content = '====== GPO COMPARISON RESULT ======\n\n';
+                
+                // Add stats
+                content += 'SUMMARY:\n';
+                content += `- Total lines: ${stats.total}\n`;
+                content += `- Added lines: ${stats.added}\n`;
+                content += `- Deleted lines: ${stats.deleted}\n`;
+                content += `- Changed lines: ${stats.changed}\n`;
+                content += `- Unchanged lines: ${stats.unchanged}\n\n`;
+                
+                content += '====== DIFFERENCES ======\n\n';
+                
+                let leftLineNum = 1;
+                let rightLineNum = 1;
+                
+                for (const diff of diffs) {
+                    switch (diff.type) {
+                        case 'unchanged':
+                            content += `  ${leftLineNum}:${rightLineNum}: ${diff.text1}\n`;
+                            leftLineNum++;
+                            rightLineNum++;
+                            break;
+                            
+                        case 'added':
+                            content += `+ ${rightLineNum}: ${diff.text2}\n`;
+                            rightLineNum++;
+                            break;
+                            
+                        case 'deleted':
+                            content += `- ${leftLineNum}: ${diff.text1}\n`;
+                            leftLineNum++;
+                            break;
+                            
+                        case 'changed':
+                            content += `~ ${leftLineNum}:${rightLineNum}: ${diff.text1} -> ${diff.text2}\n`;
+                            leftLineNum++;
+                            rightLineNum++;
+                            break;
+                    }
+                }
+                
+                return content;
+            }
+
+            // Calculate diff statistics
+            _calculateStats(diffs) {
+                const stats = {
+                    total: diffs.length,
+                    added: 0,
+                    deleted: 0,
+                    changed: 0,
+                    unchanged: 0
+                };
+                
+                diffs.forEach(diff => {
+                    stats[diff.type]++;
+                });
+                
+                return stats;
+            }
+            
+            // Get line-by-line differences between two arrays of text lines
+            _getLineDiffs(lines1, lines2) {
+                // Use diff-match-patch to get line-level differences
+                const diffs = this.dmp.diff_main(lines1.join('\n'), lines2.join('\n'));
+                
+                // Process the diffs to get line-by-line differences
+                const result = [];
+                let currentLines1 = [];
+                let currentLines2 = [];
+                
+                for (const [op, text] of diffs) {
+                    const lines = text.split('\n');
+                    
+                    // Handle last line without newline
+                    if (lines[lines.length - 1] === '') {
+                        lines.pop();
+                    }
+                    
+                    if (op === 0) { // Equal
+                        for (const line of lines) {
+                            // Process any pending changed lines
+                            this._processChangedLines(result, currentLines1, currentLines2);
+                            currentLines1 = [];
+                            currentLines2 = [];
+                            
+                            result.push({
+                                type: 'unchanged',
+                                text1: line,
+                                text2: line
+                            });
+                        }
+                    } else if (op === -1) { // Deletion
+                        currentLines1.push(...lines);
+                    } else if (op === 1) { // Addition
+                        currentLines2.push(...lines);
+                    }
+                }
+                
+                // Process any remaining changed lines
+                this._processChangedLines(result, currentLines1, currentLines2);
+                
+                return result;
+            }
+            
+            // Process accumulated changed lines
+            _processChangedLines(result, lines1, lines2) {
+                if (lines1.length === 0 && lines2.length === 0) {
+                    return;
+                }
+                
+                // If there are both deletions and additions, match them as changes
+                const minLength = Math.min(lines1.length, lines2.length);
+                
+                for (let i = 0; i < minLength; i++) {
+                    result.push({
+                        type: 'changed',
+                        text1: lines1[i],
+                        text2: lines2[i]
+                    });
+                }
+                
+                // Add remaining lines as deleted or added
+                for (let i = minLength; i < lines1.length; i++) {
+                    result.push({
+                        type: 'deleted',
+                        text1: lines1[i]
+                    });
+                }
+                
+                for (let i = minLength; i < lines2.length; i++) {
+                    result.push({
+                        type: 'added',
+                        text2: lines2[i]
+                    });
+                }
+            }
+            
+            // Format character-level diffs for display
+            _formatCharDiffs(diffs, isLeft) {
+                let html = '';
+                
+                diffs.forEach(([op, text]) => {
+                    const escapedText = this._escapeHTML(text);
+                    
+                    if (op === 0) { // Equal
+                        html += escapedText;
+                    } else if (op === -1) { // Deletion
+                        html += isLeft ? `<span class="inline-diff-deleted">${escapedText}</span>` : '';
+                    } else if (op === 1) { // Addition
+                        html += !isLeft ? `<span class="inline-diff-added">${escapedText}</span>` : '';
+                    }
+                });
+                
+                return html;
+            }
+            
+            // Normalize whitespace in text
+            _normalizeWhitespace(text) {
+                // Replace multiple spaces with a single space
+                // Replace tabs with a single space
+                // But don't trim leading/trailing whitespace from lines
+                return text.replace(/[ \t]+/g, ' ');
+            }
+            
+            // Escape HTML special characters
+            _escapeHTML(text) {
+                if (!text) return '';
+                return text
+                    .replace(/&/g, '&amp;')
+                    .replace(/</g, '&lt;')
+                    .replace(/>/g, '&gt;')
+                    .replace(/"/g, '&quot;')
+                    .replace(/'/g, '&#039;');
+            }
+        }
+
+        // Main Application Logic
+        document.addEventListener('DOMContentLoaded', function() {
+            // Initialize DiffUtil instance
+            const diffUtil = new DiffUtil();
+            
+            // UI Elements
+            const leftInput = document.getElementById('leftInput');
+            const rightInput = document.getElementById('rightInput');
+            const leftFile = document.getElementById('leftFile');
+            const rightFile = document.getElementById('rightFile');
+            const compareButton = document.getElementById('compareButton');
+            const clearButton = document.getElementById('clearButton');
+            const diffResult = document.getElementById('diffResult');
+            const exportButton = document.getElementById('exportButton');
+            
+            // Settings Elements
+            const ignoreWhitespace = document.getElementById('ignoreWhitespace');
+            const ignoreCase = document.getElementById('ignoreCase');
+            const displayMode = document.getElementById('displayMode');
+            const filterText = document.getElementById('filterText');
+            const showAdditions = document.getElementById('showAdditions');
+            const showDeletions = document.getElementById('showDeletions');
+            const showChanges = document.getElementById('showChanges');
+            
+            // Statistics Elements
+            const totalLines = document.getElementById('totalLines');
+            const addedLines = document.getElementById('addedLines');
+            const deletedLines = document.getElementById('deletedLines');
+            const changedLines = document.getElementById('changedLines');
+            
+            // Store current comparison result
+            let currentResult = null;
+            
+            // Event Listeners
+            compareButton.addEventListener('click', performComparison);
+            clearButton.addEventListener('click', clearInputs);
+            exportButton.addEventListener('click', exportResults);
+            
+            // Live filter updates
+            [filterText, showAdditions, showDeletions, showChanges, displayMode].forEach(element => {
+                element.addEventListener('change', () => {
+                    if (currentResult) {
+                        updateDiffDisplay();
+                    }
+                });
+            });
+            
+            // File upload handlers
+            leftFile.addEventListener('change', event => handleFileUpload(event, leftInput));
+            rightFile.addEventListener('change', event => handleFileUpload(event, rightInput));
+            
+            // Perform comparison between the two inputs
+            function performComparison() {
+                const text1 = leftInput.value.trim();
+                const text2 = rightInput.value.trim();
+                
+                if (!text1 || !text2) {
+                    showAlert('Please enter or upload both GPO settings to compare.');
+                    return;
+                }
+                
+                // Show loading indicator
+                diffResult.innerHTML = getLoadingHTML();
+                
+                // Use setTimeout to ensure UI updates before the comparison runs
+                setTimeout(() => {
+                    try {
+                        const options = {
+                            ignoreWhitespace: ignoreWhitespace.checked,
+                            ignoreCase: ignoreCase.checked
+                        };
+                        
+                        currentResult = diffUtil.compareTexts(text1, text2, options);
+                        updateDiffDisplay();
+                        updateStats(currentResult.stats);
+                        exportButton.disabled = false;
+                    } catch (error) {
+                        console.error('Comparison error:', error);
+                        diffResult.innerHTML = `<div class="alert alert-danger m-3">Error performing comparison: ${error.message}</div>`;
+                    }
+                }, 50);
+            }
+            
+            // Update the diff display based on current settings
+            function updateDiffDisplay() {
+                if (!currentResult) return;
+                
+                const displayOptions = {
+                    showAdditions: showAdditions.checked,
+                    showDeletions: showDeletions.checked,
+                    showChanges: showChanges.checked,
+                    filterText: filterText.value
+                };
+                
+                try {
+                    if (displayMode.value === 'sideBySide') {
+                        diffResult.innerHTML = diffUtil.generateSideBySideHTML(currentResult, displayOptions);
+                    } else {
+                        diffResult.innerHTML = diffUtil.generateInlineHTML(currentResult, displayOptions);
+                    }
+                } catch (error) {
+                    console.error('Display error:', error);
+                    diffResult.innerHTML = `<div class="alert alert-danger m-3">Error displaying comparison: ${error.message}</div>`;
+                }
+            }
+            
+            // Update the statistics display
+            function updateStats(stats) {
+                totalLines.textContent = stats.total;
+                addedLines.textContent = stats.added;
+                deletedLines.textContent = stats.deleted;
+                changedLines.textContent = stats.changed;
+            }
+            
+            // Handle file uploads
+            function handleFileUpload(event, targetInput) {
+                const file = event.target.files[0];
+                if (!file) return;
+                
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    targetInput.value = e.target.result;
+                };
+                reader.onerror = function() {
+                    showAlert('Error reading file. Please try again.');
+                };
+                reader.readAsText(file);
+            }
+            
+            // Clear all inputs and results
+            function clearInputs() {
+                leftInput.value = '';
+                rightInput.value = '';
+                leftFile.value = '';
+                rightFile.value = '';
+                diffResult.innerHTML = getEmptyStateHTML();
+                
+                // Reset statistics
+                totalLines.textContent = '0';
+                addedLines.textContent = '0';
+                deletedLines.textContent = '0';
+                changedLines.textContent = '0';
+                
+                // Reset current result
+                currentResult = null;
+                exportButton.disabled = true;
+            }
+            
+            // Export the comparison results
+            function exportResults() {
+                if (!currentResult) return;
+                
+                try {
+                    const content = diffUtil.generateExportContent(currentResult);
+                    const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+                    
+                    // Create a download link
+                    const link = document.createElement('a');
+                    link.href = URL.createObjectURL(blob);
+                    link.download = 'gpo_comparison_results.txt';
+                    link.click();
+                } catch (error) {
+                    console.error('Export error:', error);
+                    showAlert('Error exporting results. Please try again.');
+                }
+            }
+            
+            // Show an alert message
+            function showAlert(message) {
+                diffResult.innerHTML = `<div class="alert alert-warning m-3">${message}</div>`;
+            }
+            
+            // Get HTML for the loading indicator
+            function getLoadingHTML() {
+                return `
+                    <div class="text-center py-5">
+                        <div class="loading-spinner mb-3"></div>
+                        <p class="text-muted">Comparing GPO settings...</p>
+                    </div>
+                `;
+            }
+            
+            // Get HTML for the empty state
+            function getEmptyStateHTML() {
+                return `
+                    <div class="text-center py-5">
+                        <i class="fas fa-file-alt fs-1 mb-3 text-muted"></i>
+                        <p class="text-muted">Click 'Compare' to see the differences between your GPO settings or templates.</p>
+                    </div>
+                `;
+            }
+        });
+    </script>
+</body>
+</html>
