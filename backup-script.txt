@@ -25,6 +25,42 @@ function Write-Log {
     "$TimeStamp - $Message" | Out-File -FilePath $LogFile -Append
 }
 
+# Function to get folder fingerprint using file hashes
+function Get-FolderFingerprint {
+    param (
+        [string]$FolderPath
+    )
+    
+    try {
+        # Get all files recursively and create a hash of the entire structure
+        $files = Get-ChildItem -Path $FolderPath -Recurse -File -ErrorAction SilentlyContinue | 
+                 Sort-Object FullName | 
+                 Select-Object FullName, Length, LastWriteTime
+        
+        # Create a string representation of all file info
+        $fingerprintData = ""
+        foreach ($file in $files) {
+            $relativePath = $file.FullName.Replace($FolderPath, "")
+            $fingerprintData += "$relativePath|$($file.Length)|$($file.LastWriteTime.ToString('yyyy-MM-dd HH:mm:ss.fff'))`n"
+        }
+        
+        # Generate hash of the fingerprint data
+        if ($fingerprintData.Length -gt 0) {
+            $stringStream = [System.IO.MemoryStream]::new([System.Text.Encoding]::UTF8.GetBytes($fingerprintData))
+            $hash = Get-FileHash -InputStream $stringStream -Algorithm SHA256
+            $stringStream.Dispose()
+            return $hash.Hash
+        }
+        else {
+            return "EMPTY_FOLDER"
+        }
+    }
+    catch {
+        Write-Log "Error generating folder fingerprint: $_"
+        return $null
+    }
+}
+
 # Function to check if changes have occurred since last backup
 function HasChangesOccurred {
     param (
@@ -34,6 +70,16 @@ function HasChangesOccurred {
     
     Write-Log "Checking state file: $StateFile"
     
+    # Get current folder fingerprint
+    $currentFingerprint = Get-FolderFingerprint -FolderPath $Folder
+    
+    if ($null -eq $currentFingerprint) {
+        Write-Log "Error getting current folder fingerprint"
+        return $true
+    }
+    
+    Write-Log "Current folder fingerprint: $currentFingerprint"
+    
     # If state file doesn't exist, consider changes have occurred
     if (-not (Test-Path -Path $StateFile)) {
         Write-Log "State file does not exist - treating as first run"
@@ -41,21 +87,19 @@ function HasChangesOccurred {
     }
     
     try {
-        # Get current state of all files and folders
-        $currentState = Get-ChildItem -Path $Folder -Recurse -ErrorAction SilentlyContinue | 
-                       Select-Object FullName, LastWriteTime, Length |
-                       ConvertTo-Json -Compress
-                       
-        # Read previous state from file
-        $previousState = Get-Content -Path $StateFile -Raw -Encoding UTF8
+        # Read previous fingerprint from file
+        $previousFingerprint = Get-Content -Path $StateFile -Raw -Encoding UTF8
+        $previousFingerprint = $previousFingerprint.Trim()
         
-        # Compare states
-        $hasChanges = ($currentState -ne $previousState)
+        Write-Log "Previous folder fingerprint: $previousFingerprint"
+        
+        # Compare fingerprints
+        $hasChanges = ($currentFingerprint -ne $previousFingerprint)
         
         if ($hasChanges) {
-            Write-Log "Changes detected in folder structure or file timestamps"
+            Write-Log "Changes detected - folder fingerprint has changed"
         } else {
-            Write-Log "No changes detected since last backup"
+            Write-Log "No changes detected - folder fingerprint is identical"
         }
         
         return $hasChanges
@@ -128,6 +172,8 @@ function Remove-OldBackups {
         Write-Log "Error during backup cleanup: $_"
     }
 }
+
+# Function to save current state
 function Save-CurrentState {
     param (
         [string]$Folder,
@@ -140,12 +186,16 @@ function Save-CurrentState {
         New-Item -Path $StateDirectory -ItemType Directory -Force | Out-Null
     }
     
-    Get-ChildItem -Path $Folder -Recurse -ErrorAction SilentlyContinue | 
-    Select-Object FullName, LastWriteTime, Length |
-    ConvertTo-Json -Compress | 
-    Out-File -FilePath $StateFile -Force -Encoding UTF8
+    # Get current folder fingerprint and save it
+    $currentFingerprint = Get-FolderFingerprint -FolderPath $Folder
     
-    Write-Log "Saved current state to: $StateFile"
+    if ($null -ne $currentFingerprint) {
+        $currentFingerprint | Out-File -FilePath $StateFile -Force -Encoding UTF8
+        Write-Log "Saved current state fingerprint to: $StateFile"
+    }
+    else {
+        Write-Log "Error: Could not generate fingerprint to save state"
+    }
 }
 
 # Main script execution
