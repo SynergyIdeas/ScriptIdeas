@@ -1,0 +1,125 @@
+param (
+    [Parameter(Mandatory=$true)]
+    [string]$SourceFolder,
+    
+    [Parameter(Mandatory=$true)]
+    [string]$BackupDestination,
+    
+    [Parameter(Mandatory=$false)]
+    [string]$LogFile = "$env:TEMP\FolderBackup_$(Get-Date -Format 'yyyyMMdd').log"
+)
+
+# Function to write to log file
+function Write-Log {
+    param (
+        [string]$Message
+    )
+    
+    $TimeStamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+    "$TimeStamp - $Message" | Out-File -FilePath $LogFile -Append
+}
+
+# Function to check if changes have occurred since last backup
+function HasChangesOccurred {
+    param (
+        [string]$Folder,
+        [string]$StateFile
+    )
+    
+    # If state file doesn't exist, consider changes have occurred
+    if (-not (Test-Path -Path $StateFile)) {
+        return $true
+    }
+    
+    $currentState = Get-ChildItem -Path $Folder -Recurse | 
+                   Select-Object FullName, LastWriteTime, Length |
+                   ConvertTo-Json -Compress
+                   
+    $previousState = Get-Content -Path $StateFile -Raw
+    
+    return ($currentState -ne $previousState)
+}
+
+# Function to create backup
+function Create-Backup {
+    param (
+        [string]$Source,
+        [string]$Destination
+    )
+    
+    try {
+        # Create timestamp for the backup file name
+        $timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
+        $zipFileName = "Backup_$timestamp.zip"
+        $zipFilePath = Join-Path -Path $Destination -ChildPath $zipFileName
+        
+        # Ensure the destination directory exists
+        if (-not (Test-Path -Path $Destination)) {
+            New-Item -Path $Destination -ItemType Directory -Force | Out-Null
+            Write-Log "Created backup destination directory: $Destination"
+        }
+        
+        # Create the zip file
+        Add-Type -AssemblyName System.IO.Compression.FileSystem
+        [System.IO.Compression.ZipFile]::CreateFromDirectory($Source, $zipFilePath)
+        
+        Write-Log "Backup created successfully: $zipFilePath"
+        return $true
+    }
+    catch {
+        Write-Log "Error creating backup: $_"
+        return $false
+    }
+}
+
+# Function to save current state
+function Save-CurrentState {
+    param (
+        [string]$Folder,
+        [string]$StateFile
+    )
+    
+    Get-ChildItem -Path $Folder -Recurse | 
+    Select-Object FullName, LastWriteTime, Length |
+    ConvertTo-Json -Compress | 
+    Out-File -FilePath $StateFile -Force
+    
+    Write-Log "Saved current state to: $StateFile"
+}
+
+# Main script execution
+try {
+    Write-Log "Script started"
+    
+    # Validate folders
+    if (-not (Test-Path -Path $SourceFolder)) {
+        Write-Log "Source folder does not exist: $SourceFolder"
+        exit 1
+    }
+    
+    # Define state file location
+    $stateFile = Join-Path -Path $env:TEMP -ChildPath "FolderBackupState_$(Split-Path -Path $SourceFolder -Leaf).json"
+    
+    # Check if changes have occurred
+    Write-Log "Checking for changes in: $SourceFolder"
+    if (HasChangesOccurred -Folder $SourceFolder -StateFile $stateFile) {
+        Write-Log "Changes detected, creating backup"
+        
+        # Create backup
+        $backupSuccess = Create-Backup -Source $SourceFolder -Destination $BackupDestination
+        
+        # If backup was successful, save the current state
+        if ($backupSuccess) {
+            Save-CurrentState -Folder $SourceFolder -StateFile $stateFile
+        }
+    }
+    else {
+        Write-Log "No changes detected since last backup"
+    }
+    
+    Write-Log "Script completed successfully"
+}
+catch {
+    Write-Log "Error: $_"
+    exit 1
+}
