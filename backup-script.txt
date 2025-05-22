@@ -32,18 +32,38 @@ function HasChangesOccurred {
         [string]$StateFile
     )
     
+    Write-Log "Checking state file: $StateFile"
+    
     # If state file doesn't exist, consider changes have occurred
     if (-not (Test-Path -Path $StateFile)) {
+        Write-Log "State file does not exist - treating as first run"
         return $true
     }
     
-    $currentState = Get-ChildItem -Path $Folder -Recurse | 
-                   Select-Object FullName, LastWriteTime, Length |
-                   ConvertTo-Json -Compress
-                   
-    $previousState = Get-Content -Path $StateFile -Raw
-    
-    return ($currentState -ne $previousState)
+    try {
+        # Get current state of all files and folders
+        $currentState = Get-ChildItem -Path $Folder -Recurse -ErrorAction SilentlyContinue | 
+                       Select-Object FullName, LastWriteTime, Length |
+                       ConvertTo-Json -Compress
+                       
+        # Read previous state from file
+        $previousState = Get-Content -Path $StateFile -Raw -Encoding UTF8
+        
+        # Compare states
+        $hasChanges = ($currentState -ne $previousState)
+        
+        if ($hasChanges) {
+            Write-Log "Changes detected in folder structure or file timestamps"
+        } else {
+            Write-Log "No changes detected since last backup"
+        }
+        
+        return $hasChanges
+    }
+    catch {
+        Write-Log "Error reading state file: $_"
+        return $true
+    }
 }
 
 # Function to create backup
@@ -78,17 +98,52 @@ function Create-Backup {
     }
 }
 
-# Function to save current state
+# Function to cleanup old backups (keep only the latest 10)
+function Remove-OldBackups {
+    param (
+        [string]$BackupPath
+    )
+    
+    try {
+        # Get all WEMData backup zip files, sorted by creation time (newest first)
+        $backupFiles = Get-ChildItem -Path $BackupPath -Filter "WEMData_Backup_*.zip" | 
+                      Sort-Object CreationTime -Descending
+        
+        # If we have more than 10 backups, delete the oldest ones
+        if ($backupFiles.Count -gt 10) {
+            $filesToDelete = $backupFiles | Select-Object -Skip 10
+            
+            foreach ($file in $filesToDelete) {
+                Remove-Item -Path $file.FullName -Force
+                Write-Log "Deleted old backup: $($file.Name)"
+            }
+            
+            Write-Log "Cleanup completed. Kept 10 most recent backups, deleted $($filesToDelete.Count) old backups"
+        }
+        else {
+            Write-Log "Currently have $($backupFiles.Count) backup(s). No cleanup needed"
+        }
+    }
+    catch {
+        Write-Log "Error during backup cleanup: $_"
+    }
+}
 function Save-CurrentState {
     param (
         [string]$Folder,
         [string]$StateFile
     )
     
-    Get-ChildItem -Path $Folder -Recurse | 
+    # Ensure the directory exists for the state file
+    $StateDirectory = Split-Path -Path $StateFile -Parent
+    if (-not (Test-Path -Path $StateDirectory)) {
+        New-Item -Path $StateDirectory -ItemType Directory -Force | Out-Null
+    }
+    
+    Get-ChildItem -Path $Folder -Recurse -ErrorAction SilentlyContinue | 
     Select-Object FullName, LastWriteTime, Length |
     ConvertTo-Json -Compress | 
-    Out-File -FilePath $StateFile -Force
+    Out-File -FilePath $StateFile -Force -Encoding UTF8
     
     Write-Log "Saved current state to: $StateFile"
 }
@@ -103,8 +158,8 @@ try {
         exit 1
     }
     
-    # Define state file location
-    $stateFile = Join-Path -Path $env:TEMP -ChildPath "WEMData_BackupState.json"
+    # Define state file location in backup directory
+    $stateFile = Join-Path -Path $BackupDestination -ChildPath "WEMData_BackupState.txt"
     
     # Check if changes have occurred
     Write-Log "Checking for changes in WEMData folder and all subfolders: $SourceFolder"
@@ -114,9 +169,10 @@ try {
         # Create backup
         $backupSuccess = Create-Backup -Source $SourceFolder -Destination $BackupDestination
         
-        # If backup was successful, save the current state
+        # If backup was successful, save the current state and cleanup old backups
         if ($backupSuccess) {
             Save-CurrentState -Folder $SourceFolder -StateFile $stateFile
+            Remove-OldBackups -BackupPath $BackupDestination
         }
     }
     else {
