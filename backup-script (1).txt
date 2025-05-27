@@ -1,0 +1,271 @@
+param (
+    [Parameter(Mandatory=$false)]
+    [string]$SourceFolder = "D:\WEMData",
+    
+    [Parameter(Mandatory=$false)]
+    [string]$BackupDestination = "D:\Backup\WEMDataBackup",
+    
+    [Parameter(Mandatory=$false)]
+    [string]$LogFile = "D:\Logs\WEMBackup\WEMData_Backup_$(Get-Date -Format 'ddMMyyyy').log"
+)
+
+# Function to write to log file
+function Write-Log {
+    param (
+        [string]$Message
+    )
+    
+    # Ensure log directory exists
+    $LogDirectory = Split-Path -Path $LogFile -Parent
+    if (-not (Test-Path -Path $LogDirectory)) {
+        New-Item -Path $LogDirectory -ItemType Directory -Force | Out-Null
+    }
+    
+    $TimeStamp = Get-Date -Format "dd/MM/yyyy HH:mm:ss"
+    "$TimeStamp - $Message" | Out-File -FilePath $LogFile -Append
+}
+
+# Function to get folder fingerprint using file hashes
+function Get-FolderFingerprint {
+    param (
+        [string]$FolderPath
+    )
+    
+    try {
+        # Get all files recursively and create a hash of the entire structure
+        $files = Get-ChildItem -Path $FolderPath -Recurse -File -ErrorAction SilentlyContinue | 
+                 Sort-Object FullName | 
+                 Select-Object FullName, Length, LastWriteTime
+        
+        # Create a string representation of all file info
+        $fingerprintData = ""
+        foreach ($file in $files) {
+            $relativePath = $file.FullName.Replace($FolderPath, "")
+            $fingerprintData += "$relativePath|$($file.Length)|$($file.LastWriteTime.ToString('dd/MM/yyyy HH:mm:ss.fff'))`n"
+        }
+        
+        # Generate hash of the fingerprint data
+        if ($fingerprintData.Length -gt 0) {
+            $stringStream = [System.IO.MemoryStream]::new([System.Text.Encoding]::UTF8.GetBytes($fingerprintData))
+            $hash = Get-FileHash -InputStream $stringStream -Algorithm SHA256
+            $stringStream.Dispose()
+            return $hash.Hash
+        }
+        else {
+            return "EMPTY_FOLDER"
+        }
+    }
+    catch {
+        Write-Log "Error generating folder fingerprint: $_"
+        return $null
+    }
+}
+
+# Function to check if changes have occurred since last backup
+function HasChangesOccurred {
+    param (
+        [string]$Folder,
+        [string]$StateFile
+    )
+    
+    Write-Log "Checking state file: $StateFile"
+    
+    # Get current folder fingerprint
+    $currentFingerprint = Get-FolderFingerprint -FolderPath $Folder
+    
+    if ($null -eq $currentFingerprint) {
+        Write-Log "Error getting current folder fingerprint"
+        return $true
+    }
+    
+    Write-Log "Current folder fingerprint: $currentFingerprint"
+    
+    # If state file doesn't exist, consider changes have occurred
+    if (-not (Test-Path -Path $StateFile)) {
+        Write-Log "State file does not exist - treating as first run"
+        return $true
+    }
+    
+    try {
+        # Read previous fingerprint from file
+        $previousFingerprint = Get-Content -Path $StateFile -Raw -Encoding UTF8
+        $previousFingerprint = $previousFingerprint.Trim()
+        
+        Write-Log "Previous folder fingerprint: $previousFingerprint"
+        
+        # Compare fingerprints
+        $hasChanges = ($currentFingerprint -ne $previousFingerprint)
+        
+        if ($hasChanges) {
+            Write-Log "Changes detected - folder fingerprint has changed"
+        } else {
+            Write-Log "No changes detected - folder fingerprint is identical"
+        }
+        
+        return $hasChanges
+    }
+    catch {
+        Write-Log "Error reading state file: $_"
+        return $true
+    }
+}
+
+# Function to create backup
+function Create-Backup {
+    param (
+        [string]$Source,
+        [string]$Destination
+    )
+    
+    try {
+        # Create timestamp for the backup file name
+        $timestamp = Get-Date -Format "ddMMyyyy_HHmmss"
+        $zipFileName = "WEMData_Backup_$timestamp.zip"
+        $zipFilePath = Join-Path -Path $Destination -ChildPath $zipFileName
+        
+        # Ensure the destination directory exists
+        if (-not (Test-Path -Path $Destination)) {
+            New-Item -Path $Destination -ItemType Directory -Force | Out-Null
+            Write-Log "Created backup destination directory: $Destination"
+        }
+        
+        # Create the zip file
+        Add-Type -AssemblyName System.IO.Compression.FileSystem
+        [System.IO.Compression.ZipFile]::CreateFromDirectory($Source, $zipFilePath)
+        
+        Write-Log "Backup created successfully: $zipFilePath"
+        return $true
+    }
+    catch {
+        Write-Log "Error creating backup: $_"
+        return $false
+    }
+}
+
+# Function to cleanup old log files (keep only the last 30 days)
+function Remove-OldLogs {
+    param (
+        [string]$LogPath
+    )
+    
+    try {
+        $LogDirectory = Split-Path -Path $LogPath -Parent
+        
+        if (Test-Path -Path $LogDirectory) {
+            # Get all WEMData log files older than 30 days
+            $cutoffDate = (Get-Date).AddDays(-30)
+            $oldLogs = Get-ChildItem -Path $LogDirectory -Filter "WEMData_Backup_*.log" | 
+                      Where-Object { $_.CreationTime -lt $cutoffDate }
+            
+            if ($oldLogs.Count -gt 0) {
+                foreach ($log in $oldLogs) {
+                    Remove-Item -Path $log.FullName -Force
+                    Write-Log "Deleted old log file: $($log.Name)"
+                }
+                
+                Write-Log "Log cleanup completed. Deleted $($oldLogs.Count) log files older than 30 days"
+            }
+            else {
+                Write-Log "No log files older than 30 days found - no log cleanup needed"
+            }
+        }
+    }
+    catch {
+        Write-Log "Error during log cleanup: $_"
+    }
+}
+
+# Function to cleanup old backups (keep only the latest 10)
+function Remove-OldBackups {
+    param (
+        [string]$BackupPath
+    )
+    
+    try {
+        # Get all WEMData backup zip files, sorted by creation time (newest first)
+        $backupFiles = Get-ChildItem -Path $BackupPath -Filter "WEMData_Backup_*.zip" | 
+                      Sort-Object CreationTime -Descending
+        
+        # If we have more than 10 backups, delete the oldest ones
+        if ($backupFiles.Count -gt 10) {
+            $filesToDelete = $backupFiles | Select-Object -Skip 10
+            
+            foreach ($file in $filesToDelete) {
+                Remove-Item -Path $file.FullName -Force
+                Write-Log "Deleted old backup: $($file.Name)"
+            }
+            
+            Write-Log "Cleanup completed. Kept 10 most recent backups, deleted $($filesToDelete.Count) old backups"
+        }
+        else {
+            Write-Log "Currently have $($backupFiles.Count) backup(s). No cleanup needed"
+        }
+    }
+    catch {
+        Write-Log "Error during backup cleanup: $_"
+    }
+}
+
+# Function to save current state
+function Save-CurrentState {
+    param (
+        [string]$Folder,
+        [string]$StateFile
+    )
+    
+    # Ensure the directory exists for the state file
+    $StateDirectory = Split-Path -Path $StateFile -Parent
+    if (-not (Test-Path -Path $StateDirectory)) {
+        New-Item -Path $StateDirectory -ItemType Directory -Force | Out-Null
+    }
+    
+    # Get current folder fingerprint and save it
+    $currentFingerprint = Get-FolderFingerprint -FolderPath $Folder
+    
+    if ($null -ne $currentFingerprint) {
+        $currentFingerprint | Out-File -FilePath $StateFile -Force -Encoding UTF8
+        Write-Log "Saved current state fingerprint to: $StateFile"
+    }
+    else {
+        Write-Log "Error: Could not generate fingerprint to save state"
+    }
+}
+
+# Main script execution
+try {
+    Write-Log "Script started"
+    
+    # Validate folders
+    if (-not (Test-Path -Path $SourceFolder)) {
+        Write-Log "WEMData source folder does not exist: $SourceFolder"
+        exit 1
+    }
+    
+    # Define state file location in backup directory
+    $stateFile = Join-Path -Path $BackupDestination -ChildPath "WEMData_BackupState.txt"
+    
+    # Check if changes have occurred
+    Write-Log "Checking for changes in WEMData folder and all subfolders: $SourceFolder"
+    if (HasChangesOccurred -Folder $SourceFolder -StateFile $stateFile) {
+        Write-Log "Changes detected, creating backup"
+        
+        # Create backup
+        $backupSuccess = Create-Backup -Source $SourceFolder -Destination $BackupDestination
+        
+        # If backup was successful, save the current state and cleanup old backups and logs
+        if ($backupSuccess) {
+            Save-CurrentState -Folder $SourceFolder -StateFile $stateFile
+            Remove-OldBackups -BackupPath $BackupDestination
+            Remove-OldLogs -LogPath $LogFile
+        }
+    }
+    else {
+        Write-Log "No changes detected since last backup"
+    }
+    
+    Write-Log "Script completed successfully"
+}
+catch {
+    Write-Log "Error: $_"
+    exit 1
+}
