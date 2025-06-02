@@ -1,0 +1,105 @@
+# Citrix PowerShell Script Suite Configuration File
+# Edit these values according to your environment requirements
+# Lines starting with # are comments and will be ignored
+
+# Network Configuration
+NetworkSourcePath=\\fileserver\citrix\installers
+LocalInstallPath=C:\Temp
+StartupScriptsSource=\\fileserver\scripts\startup
+StartupScriptsDestination=C:\Scripts\Startup
+
+# Domain Configuration
+DomainName=company.local
+DomainJoinOU=OU=Citrix,OU=Servers,DC=company,DC=local
+DomainJoinUsername=administrator@company.local
+
+# DNS Configuration
+PrimaryDNSSuffix=company.local
+DNSSuffixSearchList=company.local,corp.company.com,company.com
+
+# Installation Paths
+VDAInstallerPath=C:\Temp\VDAServerSetup.exe
+PVSInstallerPath=C:\Temp\PVS_Agent.msi
+WEMInstallerPath=C:\Temp\Citrix_WEM_Agent.msi
+UberAgentInstallerPath=C:\Temp\uberAgent.msi
+VS2019RedistPath=C:\Temp\VC_redist.x64.exe
+DotNetInstallerPath=C:\Temp\ndp48-x86-x64-allos-enu.exe
+
+# Logging Configuration
+LogPath=%USERPROFILE%\Desktop\CitrixInstallation.log
+ReportPath=%USERPROFILE%\Desktop\CitrixInstallationReport.txt
+
+# System Configuration
+PagefileSizeGB=8
+TempCleanupPaths=C:\Temp,C:\Windows\Temp,%USERPROFILE%\AppData\Local\Temp
+
+# VDA Installation Parameters
+VDAControllers=XenApp01.company.local,XenApp02.company.local
+VDAFeatures=VDA,CCMFP
+VDAOptimizeForServerOS=true
+VDAEnableRealTimeTransport=true
+
+# Network Optimization Settings
+DisableNetBIOS=true
+DisableNetworkOffload=true
+ConfigureSMB=true
+EnableMultiChannel=true
+
+# Firewall Configuration
+CitrixICAPort=1494
+CitrixSessionSharingPort=2598
+CitrixHTTPPort=8080
+
+# Service Optimization
+DisableWindowsSearch=true
+DisableSuperfetch=true
+DisableThemes=true
+OptimizeServices=true
+
+# Security Settings
+DisableSMB1=true
+RequireSecuritySignature=false
+EnableOpportunisticLocking=true
+
+# Scheduled Tasks
+CreateStartupTasks=false
+RegisterStartupScripts=true
+
+# Citrix Optimizer Configuration
+CitrixOptimizerPath=C:\Temp\CitrixOptimizer.exe
+CitrixOptimizerSourceFolder=C:\Temp\CitrixOptimizer
+CitrixOptimizerTemplate=Windows_10_VDI.xml
+RunCitrixOptimizer=true
+
+# Citrix Services to Disable
+DisableCitrixServices=true
+CitrixServicesToDisable=BrokerAgent,CitrixCloudServicesAgent,CitrixTelemetryService,CitrixConfigSyncService,CitrixHighAvailabilityService
+
+# Event Logs Configuration
+ConfigureEventLogs=true
+EventLogsLocation=D:\Logs\EventLogs
+EventLogsMaxSizeMB=512
+EventLogsToRelocate=Application,System,Security,Microsoft-Windows-TerminalServices-LocalSessionManager/Operational
+
+# Advanced Configuration
+ForceInstallation=false
+SkipPrerequisites=false
+EnableVerboseLogging=true
+AutoReboot=true
+RebootDelay=30
+
+# Registry Optimization Values
+MaxWorkItems=2000
+MaxMpxCt=800
+MaxRawWorkItems=200
+MaxFreeConnections=64
+MinFreeConnections=20
+
+# DNS Cache Settings
+MaxCacheTtl=86400
+MaxNegativeCacheTtl=300
+NetFailureTime=30
+
+# Power Management
+DisablePowerManagement=true
+PreventSystemSleep=true
