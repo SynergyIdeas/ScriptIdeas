@@ -25,7 +25,7 @@ StartupScriptsDestination=C:\Scripts\Startup
 ```
 DomainName=company.local
 DomainJoinOU=OU=Citrix,OU=Servers,DC=company,DC=local
-DomainJoinUsername=administrator@company.local
+# Note: Domain credentials will be prompted during script execution
 ```
 
 #### DNS Configuration

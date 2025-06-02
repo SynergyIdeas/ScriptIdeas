@@ -1614,13 +1614,7 @@ function Disable-NetworkOffloadParameters {
             
             # Additional PVS-specific optimizations
             try {
-                # Disable Power Management
-                Write-Log "  Disabling power management features..."
-                $PowerMgmt = Get-NetAdapterPowerManagement -Name $Adapter.Name -ErrorAction SilentlyContinue
-                if ($PowerMgmt) {
-                    Set-NetAdapterPowerManagement -Name $Adapter.Name -AllowComputerToTurnOffDevice Disabled -ErrorAction SilentlyContinue
-                    Write-Log "  Power management disabled" "SUCCESS"
-                }
+
                 
                 # Set specific buffer sizes for PVS
                 $BufferSettings = @{
@@ -1639,7 +1633,7 @@ function Disable-NetworkOffloadParameters {
                 }
             }
             catch {
-                Write-Log "  Warning: Some power management settings could not be configured" "WARN"
+
             }
             
             if ($AdapterInfo.FailedParameters.Count -eq 0) {
@@ -2007,15 +2001,10 @@ function Set-DNSSuffix {
             
             $TcpipParamsPath = "HKLM:\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters"
             
-            # Optimize DNS cache settings
-            Set-ItemProperty -Path $TcpipParamsPath -Name "MaxCacheTtl" -Value 86400 -Type DWord -ErrorAction SilentlyContinue
-            Set-ItemProperty -Path $TcpipParamsPath -Name "MaxNegativeCacheTtl" -Value 300 -Type DWord -ErrorAction SilentlyContinue
-            
             # DNS resolver optimizations
-            Set-ItemProperty -Path $TcpipParamsPath -Name "NetFailureTime" -Value 30 -Type DWord -ErrorAction SilentlyContinue
             Set-ItemProperty -Path $TcpipParamsPath -Name "MaxHashTableBuckets" -Value 1024 -Type DWord -ErrorAction SilentlyContinue
             
-            Write-Log "DNS cache and resolver optimizations applied" "SUCCESS"
+            Write-Log "DNS resolver optimizations applied" "SUCCESS"
             $Results.ConfiguredSettings += "DNSOptimizations=Applied"
         }
         catch {
@@ -2188,44 +2177,76 @@ function Join-Domain {
 }
 
 function Copy-StartupScripts {
+    <#
+    .SYNOPSIS
+        Copies startup and shutdown scripts from network location to local folders and registers them via Group Policy
+        
+    .DESCRIPTION
+        Simplified script deployment that copies files and registers them via registry and INI files for both startup and shutdown
+        
+    .PARAMETER StartupSourcePath
+        Network path containing startup scripts
+        
+    .PARAMETER StartupDestinationPath
+        Local destination folder for startup scripts
+        
+    .PARAMETER ShutdownSourcePath
+        Network path containing shutdown scripts
+        
+    .PARAMETER ShutdownDestinationPath
+        Local destination folder for shutdown scripts
+        
+    .PARAMETER ScriptTypes
+        Array of script file patterns to copy
+        
+    .PARAMETER Force
+        Overwrite existing files
+    #>
     [CmdletBinding()]
     param(
         [Parameter(Mandatory=$false)]
-        [string]$SourcePath = "",
+        [string]$StartupSourcePath = "",
         
         [Parameter(Mandatory=$false)]
-        [string]$DestinationPath = "",
+        [string]$StartupDestinationPath = "",
+        
+        [Parameter(Mandatory=$false)]
+        [string]$ShutdownSourcePath = "",
+        
+        [Parameter(Mandatory=$false)]
+        [string]$ShutdownDestinationPath = "",
         
         [Parameter(Mandatory=$false)]
         [string[]]$ScriptTypes = @("*.ps1", "*.bat", "*.cmd", "*.vbs"),
         
         [Parameter(Mandatory=$false)]
-        [switch]$RegisterStartupScripts = $true,
-        
-        [Parameter(Mandatory=$false)]
-        [switch]$CreateScheduledTasks = $false,
-        
-        [Parameter(Mandatory=$false)]
         [switch]$Force = $false
     )
     
-    Write-LogHeader "Startup Scripts Management"
+    Write-LogHeader "Startup and Shutdown Scripts Management"
     
     try {
         # Use config file values if parameters not provided
-        if ($SourcePath -eq "") {
-            $SourcePath = Get-ConfigValue "StartupScriptsSource" "\\fileserver\scripts\startup"
+        if ($StartupSourcePath -eq "") {
+            $StartupSourcePath = Get-ConfigValue "StartupScriptsSource" "\\fileserver\scripts\startup"
         }
-        if ($DestinationPath -eq "") {
-            $DestinationPath = Get-ConfigValue "StartupScriptsDestination" "C:\Scripts\Startup"
+        if ($StartupDestinationPath -eq "") {
+            $StartupDestinationPath = Get-ConfigValue "StartupScriptsDestination" "C:\Scripts\Startup"
+        }
+        if ($ShutdownSourcePath -eq "") {
+            $ShutdownSourcePath = Get-ConfigValue "ShutdownScriptsSource" "\\fileserver\scripts\shutdown"
+        }
+        if ($ShutdownDestinationPath -eq "") {
+            $ShutdownDestinationPath = Get-ConfigValue "ShutdownScriptsDestination" "C:\Scripts\Shutdown"
         }
         
-        Write-Log "Copying startup scripts from: $SourcePath"
-        Write-Log "Destination: $DestinationPath"
+        Write-Log "Processing startup scripts from: $StartupSourcePath to: $StartupDestinationPath"
+        Write-Log "Processing shutdown scripts from: $ShutdownSourcePath to: $ShutdownDestinationPath"
         
         $Results = @{
             Success = $true
-            CopiedFiles = @()
+            StartupFiles = @()
+            ShutdownFiles = @()
             FailedFiles = @()
             RegisteredScripts = @()
             FailedRegistrations = @()
@@ -2233,128 +2254,190 @@ function Copy-StartupScripts {
             SuccessfulCopies = 0
         }
         
-        # Validate source path
-        if (!(Test-Path $SourcePath)) {
-            Write-Log "Source path does not exist: $SourcePath" "ERROR"
-            return $false
-        }
+        # Process both startup and shutdown scripts
+        $ScriptConfigs = @(
+            @{ Type = "Startup"; Source = $StartupSourcePath; Destination = $StartupDestinationPath },
+            @{ Type = "Shutdown"; Source = $ShutdownSourcePath; Destination = $ShutdownDestinationPath }
+        )
         
-        # Create destination directory
-        try {
-            if (!(Test-Path $DestinationPath)) {
-                New-Item -Path $DestinationPath -ItemType Directory -Force | Out-Null
-                Write-Log "Created destination directory: $DestinationPath" "SUCCESS"
+        foreach ($Config in $ScriptConfigs) {
+            Write-Log "Processing $($Config.Type) scripts..."
+            
+            # Validate source path (skip if empty)
+            if ([string]::IsNullOrEmpty($Config.Source) -or $Config.Source -eq "\\fileserver\scripts\$($Config.Type.ToLower())") {
+                Write-Log "Skipping $($Config.Type) scripts - no source configured" "WARN"
+                continue
             }
-        }
-        catch {
-            Write-Log "Failed to create destination directory: $($_.Exception.Message)" "ERROR"
-            return $false
-        }
-        
-        # Find all startup scripts
-        $AllScripts = @()
-        foreach ($ScriptType in $ScriptTypes) {
+            
+            if (!(Test-Path $Config.Source)) {
+                Write-Log "$($Config.Type) source path does not exist: $($Config.Source)" "WARN"
+                continue
+            }
+            
+            # Create destination directory
             try {
-                $Scripts = Get-ChildItem -Path $SourcePath -Filter $ScriptType -Recurse -ErrorAction SilentlyContinue
-                $AllScripts += $Scripts
-                Write-Log "Found $($Scripts.Count) files matching pattern: $ScriptType" "INFO"
+                if (!(Test-Path $Config.Destination)) {
+                    New-Item -Path $Config.Destination -ItemType Directory -Force | Out-Null
+                    Write-Log "Created $($Config.Type) destination directory: $($Config.Destination)" "SUCCESS"
+                }
             }
             catch {
-                Write-Log "Warning: Could not search for pattern $ScriptType`: $($_.Exception.Message)" "WARN"
+                Write-Log "Failed to create $($Config.Type) destination directory: $($_.Exception.Message)" "ERROR"
+                continue
             }
-        }
-        
-        $Results.TotalFiles = $AllScripts.Count
-        Write-Log "Total startup scripts found: $($Results.TotalFiles)"
-        
-        if ($Results.TotalFiles -eq 0) {
-            Write-Log "No startup scripts found in source path" "WARN"
-            return $true
-        }
-        
-        # Copy each script file
-        foreach ($Script in $AllScripts) {
-            try {
-                $RelativePath = $Script.FullName.Substring($SourcePath.Length).TrimStart('\')
-                $DestinationFile = Join-Path $DestinationPath $RelativePath
-                $DestinationDir = Split-Path $DestinationFile -Parent
-                
-                # Create subdirectory if needed
-                if (!(Test-Path $DestinationDir)) {
-                    New-Item -Path $DestinationDir -ItemType Directory -Force | Out-Null
+            
+            # Find all scripts
+            $AllScripts = @()
+            foreach ($ScriptType in $ScriptTypes) {
+                try {
+                    $Scripts = Get-ChildItem -Path $Config.Source -Filter $ScriptType -Recurse -ErrorAction SilentlyContinue
+                    $AllScripts += $Scripts
                 }
-                
-                # Copy file
-                if ((Test-Path $DestinationFile) -and !$Force) {
-                    Write-Log "File already exists (use -Force to overwrite): $($Script.Name)" "WARN"
-                    $Results.FailedFiles += @{
+                catch {
+                    Write-Log "Warning: Could not search for pattern $ScriptType in $($Config.Type): $($_.Exception.Message)" "WARN"
+                }
+            }
+            
+            Write-Log "Found $($AllScripts.Count) $($Config.Type) scripts"
+            $Results.TotalFiles += $AllScripts.Count
+            
+            # Copy each script file
+            foreach ($Script in $AllScripts) {
+                try {
+                    $RelativePath = $Script.FullName.Substring($Config.Source.Length).TrimStart('\')
+                    $DestinationFile = Join-Path $Config.Destination $RelativePath
+                    $DestinationDir = Split-Path $DestinationFile -Parent
+                    
+                    # Create subdirectory if needed
+                    if (!(Test-Path $DestinationDir)) {
+                        New-Item -Path $DestinationDir -ItemType Directory -Force | Out-Null
+                    }
+                    
+                    # Copy file
+                    if ((Test-Path $DestinationFile) -and !$Force) {
+                        Write-Log "File already exists (use -Force to overwrite): $($Script.Name)" "WARN"
+                        $Results.FailedFiles += @{
+                            Name = $Script.Name
+                            Type = $Config.Type
+                            Source = $Script.FullName
+                            Destination = $DestinationFile
+                            Reason = "File exists"
+                        }
+                        continue
+                    }
+                    
+                    Copy-Item -Path $Script.FullName -Destination $DestinationFile -Force:$Force -ErrorAction Stop
+                    Write-Log "Copied $($Config.Type): $($Script.Name) -> $RelativePath" "SUCCESS"
+                    
+                    $FileInfo = @{
                         Name = $Script.Name
+                        Type = $Config.Type
                         Source = $Script.FullName
                         Destination = $DestinationFile
-                        Reason = "File exists"
+                        Size = $Script.Length
                     }
-                    continue
+                    
+                    if ($Config.Type -eq "Startup") {
+                        $Results.StartupFiles += $FileInfo
+                    } else {
+                        $Results.ShutdownFiles += $FileInfo
+                    }
+                    
+                    $Results.SuccessfulCopies++
                 }
-                
-                Copy-Item -Path $Script.FullName -Destination $DestinationFile -Force:$Force -ErrorAction Stop
-                Write-Log "Copied: $($Script.Name) -> $RelativePath" "SUCCESS"
-                
-                $Results.CopiedFiles += @{
-                    Name = $Script.Name
-                    Source = $Script.FullName
-                    Destination = $DestinationFile
-                    Size = $Script.Length
+                catch {
+                    Write-Log "Failed to copy $($Config.Type) script $($Script.Name): $($_.Exception.Message)" "ERROR"
+                    $Results.FailedFiles += @{
+                        Name = $Script.Name
+                        Type = $Config.Type
+                        Source = $Script.FullName
+                        Destination = $DestinationFile
+                        Reason = $_.Exception.Message
+                    }
+                    $Results.Success = $false
                 }
-                $Results.SuccessfulCopies++
-            }
-            catch {
-                Write-Log "Failed to copy $($Script.Name): $($_.Exception.Message)" "ERROR"
-                $Results.FailedFiles += @{
-                    Name = $Script.Name
-                    Source = $Script.FullName
-                    Destination = $DestinationFile
-                    Reason = $_.Exception.Message
-                }
-                $Results.Success = $false
             }
         }
         
-        # Register startup scripts in Group Policy if requested
-        if ($RegisterStartupScripts -and $Results.SuccessfulCopies -gt 0) {
-            Write-Log "Registering startup scripts in Group Policy..."
+        # Register startup and shutdown scripts via Group Policy registry and INI files
+        if ($Results.SuccessfulCopies -gt 0) {
+            Write-Log "Registering scripts in Group Policy..."
             
             try {
-                # Create Group Policy startup scripts registry entries
-                $GPStartupPath = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Group Policy\Scripts\Startup"
+                # Create Group Policy directories if they don't exist
+                $GPMachineDir = "C:\Windows\System32\GroupPolicy\Machine"
+                $GPScriptsDir = "$GPMachineDir\Scripts"
+                $GPStartupDir = "$GPScriptsDir\Startup"
+                $GPShutdownDir = "$GPScriptsDir\Shutdown"
+                $GPPSScriptsIni = "$GPScriptsDir\psScripts.ini"
                 
-                if (!(Test-Path $GPStartupPath)) {
-                    New-Item -Path $GPStartupPath -Force | Out-Null
-                }
+                if (!(Test-Path $GPMachineDir)) { New-Item -Path $GPMachineDir -ItemType Directory -Force | Out-Null }
+                if (!(Test-Path $GPScriptsDir)) { New-Item -Path $GPScriptsDir -ItemType Directory -Force | Out-Null }
+                if (!(Test-Path $GPStartupDir)) { New-Item -Path $GPStartupDir -ItemType Directory -Force | Out-Null }
+                if (!(Test-Path $GPShutdownDir)) { New-Item -Path $GPShutdownDir -ItemType Directory -Force | Out-Null }
                 
-                # Get existing startup script count
-                $ExistingScripts = Get-ChildItem -Path $GPStartupPath -ErrorAction SilentlyContinue
-                $StartIndex = $ExistingScripts.Count
+                # Process startup and shutdown scripts separately
+                $ScriptTypes = @(
+                    @{ Type = "Startup"; Files = $Results.StartupFiles; RegPath = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Group Policy\Scripts\Startup" },
+                    @{ Type = "Shutdown"; Files = $Results.ShutdownFiles; RegPath = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Group Policy\Scripts\Shutdown" }
+                )
                 
-                foreach ($CopiedFile in $Results.CopiedFiles) {
-                    try {
-                        # Only register PowerShell and batch files
-                        if ($CopiedFile.Name -match '\.(ps1|bat|cmd)$') {
-                            $ScriptIndex = $StartIndex++
-                            $ScriptKeyPath = "$GPStartupPath\$ScriptIndex"
-                            
-                            New-Item -Path $ScriptKeyPath -Force | Out-Null
-                            Set-ItemProperty -Path $ScriptKeyPath -Name "Script" -Value $CopiedFile.Destination -Type String
-                            Set-ItemProperty -Path $ScriptKeyPath -Name "Parameters" -Value "" -Type String
-                            Set-ItemProperty -Path $ScriptKeyPath -Name "IsPowershell" -Value $(if($CopiedFile.Name -match '\.ps1$'){1}else{0}) -Type DWord
-                            Set-ItemProperty -Path $ScriptKeyPath -Name "ExecTime" -Value 0 -Type QWord
-                            
-                            Write-Log "Registered startup script: $($CopiedFile.Name)" "SUCCESS"
-                            $Results.RegisteredScripts += $CopiedFile.Name
+                $IniContent = @()
+                
+                foreach ($ScriptType in $ScriptTypes) {
+                    if ($ScriptType.Files.Count -gt 0) {
+                        Write-Log "Registering $($ScriptType.Type) scripts..."
+                        
+                        # Create registry path if it doesn't exist
+                        if (!(Test-Path $ScriptType.RegPath)) {
+                            New-Item -Path $ScriptType.RegPath -Force | Out-Null
+                        }
+                        
+                        # Get existing script count
+                        $ExistingScripts = Get-ChildItem -Path $ScriptType.RegPath -ErrorAction SilentlyContinue
+                        $StartIndex = $ExistingScripts.Count
+                        
+                        # Add INI section header
+                        $IniContent += "[$($ScriptType.Type)]"
+                        
+                        foreach ($ScriptFile in $ScriptType.Files) {
+                            try {
+                                # Only register PowerShell and batch files
+                                if ($ScriptFile.Name -match '\.(ps1|bat|cmd)$') {
+                                    $ScriptIndex = $StartIndex++
+                                    $ScriptKeyPath = "$($ScriptType.RegPath)\$ScriptIndex"
+                                    
+                                    # Create registry entry
+                                    New-Item -Path $ScriptKeyPath -Force | Out-Null
+                                    Set-ItemProperty -Path $ScriptKeyPath -Name "Script" -Value $ScriptFile.Destination -Type String
+                                    Set-ItemProperty -Path $ScriptKeyPath -Name "Parameters" -Value "" -Type String
+                                    Set-ItemProperty -Path $ScriptKeyPath -Name "IsPowershell" -Value $(if($ScriptFile.Name -match '\.ps1$'){1}else{0}) -Type DWord
+                                    Set-ItemProperty -Path $ScriptKeyPath -Name "ExecTime" -Value 0 -Type QWord
+                                    
+                                    # Add to INI content
+                                    $IniContent += "${ScriptIndex}CmdLine=$($ScriptFile.Destination)"
+                                    $IniContent += "${ScriptIndex}Parameters="
+                                    
+                                    Write-Log "Registered $($ScriptType.Type) script: $($ScriptFile.Name)" "SUCCESS"
+                                    $Results.RegisteredScripts += "$($ScriptType.Type): $($ScriptFile.Name)"
+                                }
+                            }
+                            catch {
+                                Write-Log "Failed to register $($ScriptType.Type) script $($ScriptFile.Name): $($_.Exception.Message)" "ERROR"
+                                $Results.FailedRegistrations += "$($ScriptType.Type): $($ScriptFile.Name)"
+                            }
                         }
                     }
+                }
+                
+                # Write INI file
+                if ($IniContent.Count -gt 0) {
+                    try {
+                        $IniContent | Out-File -FilePath $GPPSScriptsIni -Encoding ASCII -Force
+                        Write-Log "Created Group Policy INI file: $GPPSScriptsIni" "SUCCESS"
+                    }
                     catch {
-                        Write-Log "Failed to register script $($CopiedFile.Name): $($_.Exception.Message)" "ERROR"
-                        $Results.FailedRegistrations += $CopiedFile.Name
+                        Write-Log "Failed to create INI file: $($_.Exception.Message)" "ERROR"
                     }
                 }
             }
@@ -2363,50 +2446,26 @@ function Copy-StartupScripts {
             }
         }
         
-        # Create scheduled tasks if requested
-        if ($CreateScheduledTasks -and $Results.SuccessfulCopies -gt 0) {
-            Write-Log "Creating scheduled tasks for startup scripts..."
-            
-            foreach ($CopiedFile in $Results.CopiedFiles) {
-                try {
-                    if ($CopiedFile.Name -match '\.(ps1|bat|cmd)$') {
-                        $TaskName = "StartupScript_$($CopiedFile.Name -replace '\.[^.]*$')"
-                        
-                        # Create scheduled task action
-                        if ($CopiedFile.Name -match '\.ps1$') {
-                            $Action = New-ScheduledTaskAction -Execute "PowerShell.exe" -Argument "-ExecutionPolicy Bypass -File `"$($CopiedFile.Destination)`""
-                        } else {
-                            $Action = New-ScheduledTaskAction -Execute $CopiedFile.Destination
-                        }
-                        
-                        # Create trigger for startup
-                        $Trigger = New-ScheduledTaskTrigger -AtStartup
-                        
-                        # Create task with system account
-                        $Principal = New-ScheduledTaskPrincipal -UserId "SYSTEM" -LogonType ServiceAccount -RunLevel Highest
-                        
-                        # Register the task
-                        Register-ScheduledTask -TaskName $TaskName -Action $Action -Trigger $Trigger -Principal $Principal -Description "Startup script: $($CopiedFile.Name)" -Force | Out-Null
-                        Write-Log "Created scheduled task: $TaskName" "SUCCESS"
-                    }
-                }
-                catch {
-                    Write-Log "Failed to create scheduled task for $($CopiedFile.Name): $($_.Exception.Message)" "ERROR"
-                }
-            }
-        }
-        
         # Summary report
         Write-Log ""
-        Write-Log "Startup scripts copy operation summary:"
+        Write-Log "Scripts copy operation summary:"
         Write-Log "Total files found: $($Results.TotalFiles)"
         Write-Log "Successfully copied: $($Results.SuccessfulCopies)"
         Write-Log "Failed copies: $($Results.FailedFiles.Count)"
         Write-Log "Registered scripts: $($Results.RegisteredScripts.Count)"
+        Write-Log "Startup scripts: $($Results.StartupFiles.Count)"
+        Write-Log "Shutdown scripts: $($Results.ShutdownFiles.Count)"
         
-        if ($Results.CopiedFiles.Count -gt 0) {
-            Write-Log "Successfully copied files:"
-            foreach ($File in $Results.CopiedFiles) {
+        if ($Results.StartupFiles.Count -gt 0) {
+            Write-Log "Successfully copied startup files:"
+            foreach ($File in $Results.StartupFiles) {
+                Write-Log "  ✓ $($File.Name) ($([math]::Round($File.Size/1KB, 2)) KB)" "SUCCESS"
+            }
+        }
+        
+        if ($Results.ShutdownFiles.Count -gt 0) {
+            Write-Log "Successfully copied shutdown files:"
+            foreach ($File in $Results.ShutdownFiles) {
                 Write-Log "  ✓ $($File.Name) ($([math]::Round($File.Size/1KB, 2)) KB)" "SUCCESS"
             }
         }

@@ -5,13 +5,18 @@
 # Network Configuration
 NetworkSourcePath=\\fileserver\citrix\installers
 LocalInstallPath=C:\Temp
+
+# Startup Scripts Configuration
 StartupScriptsSource=\\fileserver\scripts\startup
 StartupScriptsDestination=C:\Scripts\Startup
+
+# Shutdown Scripts Configuration
+ShutdownScriptsSource=\\fileserver\scripts\shutdown
+ShutdownScriptsDestination=C:\Scripts\Shutdown
 
 # Domain Configuration
 DomainName=company.local
 DomainJoinOU=OU=Citrix,OU=Servers,DC=company,DC=local
-DomainJoinUsername=administrator@company.local
 
 # DNS Configuration
 PrimaryDNSSuffix=company.local
@@ -34,7 +39,6 @@ PagefileSizeGB=8
 TempCleanupPaths=C:\Temp,C:\Windows\Temp,%USERPROFILE%\AppData\Local\Temp
 
 # VDA Installation Parameters
-VDAControllers=XenApp01.company.local,XenApp02.company.local
 VDAFeatures=VDA,CCMFP
 VDAOptimizeForServerOS=true
 VDAEnableRealTimeTransport=true
@@ -61,9 +65,7 @@ DisableSMB1=true
 RequireSecuritySignature=false
 EnableOpportunisticLocking=true
 
-# Scheduled Tasks
-CreateStartupTasks=false
-RegisterStartupScripts=true
+
 
 # Citrix Optimizer Configuration
 CitrixOptimizerPath=C:\Temp\CitrixOptimizer.exe
@@ -95,11 +97,3 @@ MaxRawWorkItems=200
 MaxFreeConnections=64
 MinFreeConnections=20
 
-# DNS Cache Settings
-MaxCacheTtl=86400
-MaxNegativeCacheTtl=300
-NetFailureTime=30
-
-# Power Management
-DisablePowerManagement=true
-PreventSystemSleep=true
