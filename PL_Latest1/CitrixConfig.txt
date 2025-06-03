@@ -1,0 +1,189 @@
+# ======================================================================
+# Citrix Platform Installation Configuration File
+# ======================================================================
+# This file contains all configuration parameters for the Citrix 
+# installation scripts. Modify values as needed for your environment.
+# 
+# Format: Key=Value (no spaces around =)
+# Comments start with # and are ignored
+# Environment variables can be used with %VARIABLE% syntax
+# Boolean values: true/false
+# Numeric values: integers only
+# ======================================================================
+
+# ======================
+# NETWORK SOURCE PATHS
+# ======================
+# Network paths where installation files are stored
+# These paths should be accessible from the target system during installation
+
+# Main network source directory for installers
+NetworkSourcePath=\\fileserver\citrix\installers
+
+# VDA Installation Source
+VDAISOSourcePath=\\fileserver\citrix\installers\VDA\VDAServerSetup_2402.iso
+VDAISOPath=C:\Temp\VDA.iso
+
+# PVS Target Device Installation Source (leave empty to skip)
+PVSISOSourcePath=\\fileserver\citrix\installers\PVS\PVS_Target_2402.iso
+PVSISOPath=C:\Temp\PVS.iso
+
+# WEM Agent Installation (leave empty to skip)
+WEMPath=\\fileserver\citrix\installers\WEM\Citrix_Workspace_Environment_Management_Agent_2402.msi
+
+# UberAgent Installation (leave empty to skip)
+UberAgentPath=\\fileserver\citrix\installers\UberAgent\uberAgent_7.0.0.msi
+
+# IBM TADDM Installation (leave empty to skip)
+TADDMPath=\\fileserver\citrix\installers\TADDM\install.bat
+
+# ======================
+# STARTUP/SHUTDOWN SCRIPTS
+# ======================
+# OS-specific script locations for Windows Server 2019 vs 2022
+
+# Windows Server 2019 Script Sources
+StartupScriptsSourceWin2019=\\fileserver\scripts\startup\win2019
+ShutdownScriptsSourceWin2019=\\fileserver\scripts\shutdown\win2019
+
+# Windows Server 2022 Script Sources  
+StartupScriptsSourceWin2022=\\fileserver\scripts\startup\win2022
+ShutdownScriptsSourceWin2022=\\fileserver\scripts\shutdown\win2022
+
+# Local Script Destinations
+StartupScriptsDestination=C:\Scripts\Startup
+ShutdownScriptsDestination=C:\Scripts\Shutdown
+
+# ======================
+# SYSTEM CONFIGURATION
+# ======================
+
+# Local installation directory
+LocalInstallPath=C:\Temp
+
+# Logging configuration
+LogPath=%USERPROFILE%\Desktop\Citrix_Install_%DATE%_%TIME%.log
+VerboseLogging=true
+
+# Pagefile configuration (in GB)
+PagefileSizeGB=8
+
+# ======================
+# INSTALLATION OPTIONS
+# ======================
+
+# Component installation flags (true/false)
+InstallVDA=true
+InstallPVS=true
+InstallWEM=false
+InstallUberAgent=false
+InstallTADDM=false
+
+# System optimization settings
+EnableVDIOptimizations=true
+ConfigurePagefile=true
+OptimizeServices=true
+ApplyRegistryOptimizations=true
+
+# Network configuration
+DisableNetBIOS=true
+DisableNetworkOffload=true
+
+# SMB optimization parameters
+SMBMaxWorkItems=2000
+SMBMaxMpxCt=800
+SMBMaxRawWorkItems=200
+SMBMaxFreeConnections=64
+SMBMinFreeConnections=20
+
+# ======================
+# VALIDATION SETTINGS
+# ======================
+
+# Validation mode: Standard, Enhanced, or Strict
+ValidationMode=Enhanced
+
+# Continue installation despite warnings
+ContinueOnWarnings=true
+
+# Create configuration backups
+CreateBackups=true
+
+# Performance testing after installation
+PerformanceTest=true
+
+# ======================
+# DOMAIN CONFIGURATION
+# ======================
+# Note: Domain credentials will be prompted during execution for security
+# Do not store credentials in this configuration file
+
+# Domain join settings (true/false)
+JoinDomain=false
+
+# Domain information (used only if JoinDomain=true)
+DomainName=yourdomain.local
+OrganizationalUnit=OU=Citrix,OU=Servers,DC=yourdomain,DC=local
+
+# ======================
+# ADVANCED SETTINGS
+# ======================
+
+# Cleanup temporary files after installation
+CleanupTemporaryFiles=true
+
+# Create detailed installation report
+CreateDetailedReport=true
+
+# Automatic reboot after Stage 1
+AutoReboot=true
+
+# Stage 2 auto-execution delay (seconds)
+Stage2Delay=120
+
+# Maximum installation timeout (minutes)
+InstallationTimeout=60
+
+# Retry attempts for network operations
+NetworkRetryAttempts=3
+
+# File copy verification
+VerifyFileCopies=true
+
+# Event log configuration
+ConfigureEventLogs=true
+
+# Maximum log file size (MB)
+MaxLogFileSizeMB=50
+
+# ======================
+# ENVIRONMENT SPECIFIC
+# ======================
+
+# Target environment type: Production, Test, Development
+EnvironmentType=Production
+
+# Citrix Site configuration
+CitrixSiteName=DefaultSite
+
+# Resource location settings
+ResourceLocationName=Default
+
+# ======================
+# TROUBLESHOOTING
+# ======================
+
+# Debug mode (enables additional logging)
+DebugMode=false
+
+# Skip certain validations (for troubleshooting only)
+SkipPrerequisiteChecks=false
+SkipConnectivityTests=true
+SkipExistingInstallationChecks=true
+
+# Preserve installation files for troubleshooting
+PreserveInstallationFiles=false
+
+# ======================================================================
+# END OF CONFIGURATION
+# ======================================================================
