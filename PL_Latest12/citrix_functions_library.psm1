@@ -204,33 +204,58 @@ function Get-DesktopPath {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory=$false)]
-        [switch]$CreateIfNotExists = $false
+        [switch]$CreateIfNotExists = $true
     )
     
     try {
-        # Try to get the actual desktop path for the current user
-        $DesktopPath = [Environment]::GetFolderPath([Environment+SpecialFolder]::Desktop)
+        # Try multiple methods to get desktop path
+        $DesktopPath = $null
         
-        if ([string]::IsNullOrEmpty($DesktopPath) -or -not (Test-Path $DesktopPath)) {
-            # Fallback to common desktop path
-            $DesktopPath = Join-Path $env:USERPROFILE "Desktop"
-            
-            if (-not (Test-Path $DesktopPath) -and $CreateIfNotExists) {
-                New-Item -Path $DesktopPath -ItemType Directory -Force | Out-Null
+        # Method 1: .NET SpecialFolder
+        try {
+            $DesktopPath = [Environment]::GetFolderPath([Environment+SpecialFolder]::Desktop)
+            if (![string]::IsNullOrEmpty($DesktopPath) -and (Test-Path $DesktopPath)) {
+                return $DesktopPath
             }
         }
+        catch { }
         
-        if (-not (Test-Path $DesktopPath)) {
-            # Final fallback to current directory
-            $DesktopPath = Get-Location
-            Write-Log "Using current directory as desktop path: $DesktopPath" "WARN"
+        # Method 2: Registry lookup
+        try {
+            $RegPath = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Shell Folders"
+            $DesktopPath = (Get-ItemProperty -Path $RegPath -Name "Desktop" -ErrorAction SilentlyContinue).Desktop
+            if (![string]::IsNullOrEmpty($DesktopPath) -and (Test-Path $DesktopPath)) {
+                return $DesktopPath
+            }
+        }
+        catch { }
+        
+        # Method 3: Environment variable
+        $DesktopPath = "$env:USERPROFILE\Desktop"
+        if (Test-Path $DesktopPath) {
+            return $DesktopPath
         }
         
-        return $DesktopPath.ToString()
+        # Method 4: Create desktop if it doesn't exist
+        if ($CreateIfNotExists) {
+            try {
+                New-Item -Path $DesktopPath -ItemType Directory -Force | Out-Null
+                return $DesktopPath
+            }
+            catch { }
+        }
+        
+        # Method 5: Public desktop
+        $PublicDesktop = "$env:PUBLIC\Desktop"
+        if (Test-Path $PublicDesktop) {
+            return $PublicDesktop
+        }
+        
+        # Final fallback
+        return $env:TEMP
     }
     catch {
-        Write-Warning "Could not determine desktop path, using current directory: $($_.Exception.Message)"
-        return (Get-Location).ToString()
+        return $env:TEMP
     }
 }
 
@@ -988,31 +1013,45 @@ function Get-DesktopLogPath {
     )
     
     try {
-        $DesktopPath = Get-DesktopPath
         $Timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
         
         if ([string]::IsNullOrEmpty($LogFileName)) {
             $LogFileName = "Citrix_Install_$Timestamp.log"
         }
         
+        # Try to get desktop path and create log file
+        $DesktopPath = Get-DesktopPath -CreateIfNotExists
         $FullLogPath = Join-Path $DesktopPath $LogFileName
         
-        # Test if we can write to the desktop
+        # Immediately create the log file to ensure it exists
         try {
-            $TestFile = Join-Path $DesktopPath "test_write_$Timestamp.tmp"
-            "test" | Out-File -FilePath $TestFile -Force
-            Remove-Item $TestFile -Force -ErrorAction SilentlyContinue
+            "# Citrix Installation Log - Created $(Get-Date)" | Out-File -FilePath $FullLogPath -Force
+            
+            # Verify the file was created
+            if (Test-Path $FullLogPath) {
+                Write-Host "Log file created successfully: $FullLogPath" -ForegroundColor Green
+                return $FullLogPath
+            }
         }
         catch {
-            # If can't write to desktop, use temp directory
-            $FullLogPath = Join-Path $env:TEMP $LogFileName
+            Write-Host "Failed to create desktop log: $($_.Exception.Message)" -ForegroundColor Yellow
         }
         
-        return $FullLogPath
+        # Fallback to temp directory with immediate creation
+        $TempLogPath = "$env:TEMP\$LogFileName"
+        try {
+            "# Citrix Installation Log - Created $(Get-Date)" | Out-File -FilePath $TempLogPath -Force
+            Write-Host "Using temp directory for log: $TempLogPath" -ForegroundColor Yellow
+            return $TempLogPath
+        }
+        catch {
+            Write-Host "Failed to create any log file: $($_.Exception.Message)" -ForegroundColor Red
+            return $null
+        }
     }
     catch {
-        # Final fallback to temp directory
-        return "$env:TEMP\Citrix_Install_$(Get-Date -Format 'yyyyMMdd_HHmmss').log"
+        Write-Host "Critical error in log path creation: $($_.Exception.Message)" -ForegroundColor Red
+        return $null
     }
 }
 
@@ -1576,8 +1615,16 @@ function Start-Logging {
         $Global:LogPath = $LogPath
         
         # Write initial log entry directly to ensure file creation
-        $InitMessage = "Logging initialized at $(Get-Date)"
+        $InitMessage = "=== Citrix Installation Logging Started at $(Get-Date) ==="
         $InitMessage | Out-File -FilePath $LogPath -Append -Force
+        
+        # Verify the log file exists and is writable
+        if (Test-Path $LogPath) {
+            Write-Host "Logging successfully initialized to: $LogPath" -ForegroundColor Green
+        }
+        else {
+            Write-Host "WARNING: Log file was not created at: $LogPath" -ForegroundColor Red
+        }
         
         return $true
     }

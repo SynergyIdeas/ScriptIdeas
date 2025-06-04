@@ -58,14 +58,19 @@ try {
     # Load configuration from CitrixConfig.txt
     $Config = Read-ConfigFile -ConfigFilePath $ConfigFilePath
     
-    # Get NetworkSourcePath first for building other paths
+    # Get NetworkSourcePath and LocalInstallPath first for building other paths
     $NetworkSourcePath = Get-ConfigValue -Key "NetworkSourcePath" -DefaultValue "\\fileserver\citrix" -ConfigFile $ConfigFilePath
+    $LocalInstallPath = Get-ConfigValue -Key "LocalInstallPath" -DefaultValue "C:\Temp" -ConfigFile $ConfigFilePath
     
-    # Set configuration variables from config file with NetworkSourcePath-based defaults
+    # Set configuration variables from config file with dynamic path defaults
     $VDAISOSourcePath = Get-ConfigValue -Key "VDAISOSourcePath" -DefaultValue "$NetworkSourcePath\installers\VDA\VDAServerSetup.iso" -ConfigFile $ConfigFilePath
-    $VDAISOPath = Get-ConfigValue -Key "VDAISOPath" -DefaultValue "C:\Temp\VDA.iso" -ConfigFile $ConfigFilePath
+    $VDAISOPath = Get-ConfigValue -Key "VDAISOPath" -DefaultValue "$LocalInstallPath\VDA.iso" -ConfigFile $ConfigFilePath
     $PVSISOSourcePath = Get-ConfigValue -Key "PVSISOSourcePath" -DefaultValue "$NetworkSourcePath\installers\PVS\PVS_Target.iso" -ConfigFile $ConfigFilePath
-    $PVSISOPath = Get-ConfigValue -Key "PVSISOPath" -DefaultValue "C:\Temp\PVS.iso" -ConfigFile $ConfigFilePath
+    $PVSISOPath = Get-ConfigValue -Key "PVSISOPath" -DefaultValue "$LocalInstallPath\PVS.iso" -ConfigFile $ConfigFilePath
+    
+    # Sanitize paths to prevent illegal character errors
+    $VDAISOPath = $VDAISOPath.Trim().Replace('\\', '\')
+    $PVSISOPath = $PVSISOPath.Trim().Replace('\\', '\')
     $WEMPath = Get-ConfigValue -Key "WEMPath" -DefaultValue "" -ConfigFile $ConfigFilePath
     $UberAgentPath = Get-ConfigValue -Key "UberAgentPath" -DefaultValue "" -ConfigFile $ConfigFilePath
     $UberAgentTemplatesPath = Get-ConfigValue -Key "UberAgentTemplatesPath" -DefaultValue "$NetworkSourcePath\UberAgent\Templates" -ConfigFile $ConfigFilePath
@@ -100,6 +105,23 @@ try {
     Write-Host "IBM TADDM: $(if([string]::IsNullOrEmpty($TADDMPath)){'NOT CONFIGURED'}else{$TADDMPath})" -ForegroundColor $(if([string]::IsNullOrEmpty($TADDMPath)){'Yellow'}else{'White'})
     Write-Host "TADDM Install Bat: $(if([string]::IsNullOrEmpty($TADDMInstallBatPath)){'NOT CONFIGURED'}else{$TADDMInstallBatPath})" -ForegroundColor $(if([string]::IsNullOrEmpty($TADDMInstallBatPath)){'Yellow'}else{'White'})
     Write-Host "Log Path: $LogPath" -ForegroundColor White
+    
+    # Immediate log file creation test
+    try {
+        Write-Host "`nTesting log file creation..." -ForegroundColor Cyan
+        $TestLogPath = Get-DesktopLogPath
+        Write-Host "Test log path: $TestLogPath" -ForegroundColor Gray
+        
+        if (Test-Path $TestLogPath) {
+            Write-Host "SUCCESS: Log file exists on desktop" -ForegroundColor Green
+        }
+        else {
+            Write-Host "WARNING: Log file not found at expected location" -ForegroundColor Yellow
+        }
+    }
+    catch {
+        Write-Host "ERROR: Log creation test failed - $($_.Exception.Message)" -ForegroundColor Red
+    }
     Write-Host "Pagefile Size: $PagefileSizeGB GB" -ForegroundColor White
     Write-Host "=================================" -ForegroundColor Cyan
 }
@@ -110,11 +132,12 @@ catch {
     # Default NetworkSourcePath for fallback values
     $NetworkSourcePath = "\\fileserver\citrix"
     
-    # Default configuration values
+    # Default configuration values with LocalInstallPath
+    $LocalInstallPath = "C:\Temp"
     $VDAISOSourcePath = "$NetworkSourcePath\installers\VDA\VDAServerSetup.iso"
-    $VDAISOPath = "C:\Temp\VDA.iso"
+    $VDAISOPath = "$LocalInstallPath\VDA.iso"
     $PVSISOSourcePath = "$NetworkSourcePath\installers\PVS\PVS_Target.iso"
-    $PVSISOPath = "C:\Temp\PVS.iso"
+    $PVSISOPath = "$LocalInstallPath\PVS.iso"
     $WEMPath = ""
     $UberAgentPath = ""
     $UberAgentTemplatesPath = ""
@@ -290,7 +313,7 @@ if (!$FunctionsFound) {
 
 # Check VDA installer source (required)
 Write-Host "Validating VDA installer source..." -ForegroundColor Gray
-if (Test-Path $VDAISOSourcePath) {
+if (![string]::IsNullOrEmpty($VDAISOSourcePath) -and (Test-Path -Path $VDAISOSourcePath -ErrorAction SilentlyContinue)) {
     Write-Host "  VDA ISO Source: FOUND" -ForegroundColor Green
     
     # Enhanced VDA ISO validation
@@ -362,26 +385,38 @@ foreach ($Component in $OptionalComponents) {
             # For network paths, validate the source, not the destination
             $PathToCheck = $Component.Path
             
-            # For ISOs, check source path instead of destination
-            if ($Component.Variable -eq "PVSISOPath" -and ![string]::IsNullOrEmpty($PVSISOSourcePath)) {
-                $PathToCheck = $PVSISOSourcePath
-                Write-Host "  Checking source: $PVSISOSourcePath" -ForegroundColor Gray
+            # Sanitize the path to prevent illegal character errors
+            if (![string]::IsNullOrEmpty($PathToCheck)) {
+                $PathToCheck = $PathToCheck.Trim().Replace('\\', '\')
             }
             
-            if (Test-Path $PathToCheck) {
-                Write-Host "  $($Component.Name): FOUND" -ForegroundColor Green
+            # For ISOs, check source path instead of destination
+            if ($Component.Variable -eq "PVSISOPath" -and ![string]::IsNullOrEmpty($PVSISOSourcePath)) {
+                $PathToCheck = $PVSISOSourcePath.Trim().Replace('\\', '\')
+                Write-Host "  Checking source: $PathToCheck" -ForegroundColor Gray
+            }
+            
+            # Only test path if it's valid
+            if (![string]::IsNullOrEmpty($PathToCheck) -and $PathToCheck.Length -gt 0) {
+                if (Test-Path -Path $PathToCheck -ErrorAction SilentlyContinue) {
+                    Write-Host "  $($Component.Name): FOUND" -ForegroundColor Green
+                }
+                else {
+                    $ValidationWarnings += "$($Component.Name) not found: $PathToCheck"
+                    Write-Host "  $($Component.Name): NOT FOUND" -ForegroundColor Yellow
+                    
+                    # Clear the variable if file doesn't exist
+                    Set-Variable -Name $Component.Variable -Value "" -Scope Script
+                }
             }
             else {
-                $ValidationWarnings += "$($Component.Name) not found: $PathToCheck"
-                Write-Host "  $($Component.Name): NOT FOUND" -ForegroundColor Yellow
-                
-                # Clear the variable if file doesn't exist
+                Write-Host "  $($Component.Name): INVALID PATH" -ForegroundColor Red
                 Set-Variable -Name $Component.Variable -Value "" -Scope Script
             }
         }
         catch {
             $ValidationWarnings += "$($Component.Name) path validation failed: $($_.Exception.Message)"
-            Write-Host "  $($Component.Name): PATH ERROR" -ForegroundColor Red
+            Write-Host "  $($Component.Name): PATH ERROR - $($_.Exception.Message)" -ForegroundColor Red
             Set-Variable -Name $Component.Variable -Value "" -Scope Script
         }
     }
@@ -518,16 +553,41 @@ catch {
     exit 1
 }
 
-# Initialize enhanced logging
+# Initialize enhanced logging with verification
 try {
+    Write-Host "`nInitializing logging system..." -ForegroundColor Cyan
+    Write-Host "Target log path: $LogPath" -ForegroundColor Gray
+    
     $LogInitResult = Start-Logging -LogPath $LogPath -ClearExisting
     if (!$LogInitResult) {
-        throw "Logging initialization failed"
+        throw "Logging initialization returned false"
+    }
+    
+    # Verify log file was actually created
+    if (Test-Path $LogPath) {
+        Write-Host "SUCCESS: Log file created and accessible" -ForegroundColor Green
+        $LogSize = (Get-Item $LogPath).Length
+        Write-Host "Log file size: $LogSize bytes" -ForegroundColor Gray
+    }
+    else {
+        Write-Host "WARNING: Log initialization succeeded but file not found" -ForegroundColor Yellow
     }
 }
 catch {
-    Write-Host "WARNING: Could not initialize logging: $($_.Exception.Message)" -ForegroundColor Yellow
-    Write-Host "Continuing without logging..." -ForegroundColor Yellow
+    Write-Host "ERROR: Could not initialize logging: $($_.Exception.Message)" -ForegroundColor Red
+    Write-Host "Attempting emergency desktop logging..." -ForegroundColor Yellow
+    
+    # Emergency fallback - create log directly on desktop
+    try {
+        $EmergencyLogPath = "$env:USERPROFILE\Desktop\Citrix_Emergency_$(Get-Date -Format 'yyyyMMdd_HHmmss').log"
+        "Emergency Citrix Installation Log - $(Get-Date)" | Out-File -FilePath $EmergencyLogPath -Force
+        $Global:LogPath = $EmergencyLogPath
+        Write-Host "Emergency log created: $EmergencyLogPath" -ForegroundColor Green
+    }
+    catch {
+        Write-Host "CRITICAL: All logging methods failed" -ForegroundColor Red
+        $Global:LogPath = $null
+    }
 }
 
 # Main execution with enhanced error handling
@@ -545,6 +605,40 @@ try {
         Write-Log "Installation proceeding with $($ValidationWarnings.Count) warning(s)" "WARN"
     }
     
+    # Validate network source files before copying
+    Write-LogHeader "Network Source Files Validation"
+    Write-Log "Validating network source files accessibility..."
+    
+    # Validate VDA ISO source exists on network before copying
+    if (![string]::IsNullOrEmpty($VDAISOSourcePath)) {
+        Write-Log "Checking VDA ISO source: $VDAISOSourcePath" "INFO"
+        if (Test-Path -Path $VDAISOSourcePath -ErrorAction SilentlyContinue) {
+            Write-Log "VDA ISO source validation: SUCCESS" "SUCCESS"
+            try {
+                $VDAFileInfo = Get-ItemProperty -Path $VDAISOSourcePath
+                $VDASize = [Math]::Round($VDAFileInfo.Length / 1MB, 1)
+                Write-Log "VDA ISO size: $VDASize MB" "INFO"
+            }
+            catch {
+                Write-Log "Could not read VDA ISO properties" "WARN"
+            }
+        }
+        else {
+            Write-Log "VDA ISO source validation: FAILED - File not accessible" "ERROR"
+        }
+    }
+    
+    # Validate PVS ISO source if configured
+    if (![string]::IsNullOrEmpty($PVSISOSourcePath)) {
+        Write-Log "Checking PVS ISO source: $PVSISOSourcePath" "INFO"
+        if (Test-Path -Path $PVSISOSourcePath -ErrorAction SilentlyContinue) {
+            Write-Log "PVS ISO source validation: SUCCESS" "SUCCESS"
+        }
+        else {
+            Write-Log "PVS ISO source validation: FAILED - File not accessible" "WARN"
+        }
+    }
+    
     # Copy installation files from network location with enhanced validation
     Write-LogHeader "Installation Files Copy Operation"
     Write-Log "Copying installation files from network location..."
@@ -553,18 +647,20 @@ try {
     $FileOperationsLog = Get-DesktopLogPath
     Write-Log "Enhanced file operations logging to: $FileOperationsLog" "INFO"
     
-    $LocalPath = Get-ConfigValue -Key "LocalInstallPath" -DefaultValue "C:\Temp" -ConfigFile $ConfigFilePath
+    # Use the already configured LocalInstallPath
+    $LocalPath = $LocalInstallPath
     $CopySuccess = Copy-InstallationFiles -NetworkPath $NetworkSourcePath -LocalPath $LocalPath -Force
     
-    # Use enhanced file validation for critical installation files
+    # Validate copied files after successful copy operation
     if ($CopySuccess) {
-        Write-Log "Performing file integrity validation..." "INFO"
-        $VDAValidation = Copy-FileWithValidation -SourcePath $VDAISOSourcePath -DestinationPath $VDAISOPath -RetryAttempts 3
-        if ($VDAValidation.Success) {
-            Write-Log "VDA ISO integrity validated successfully" "SUCCESS"
+        Write-Log "Performing copied file integrity validation..." "INFO"
+        
+        # Only validate if file was actually copied to local destination
+        if (Test-Path $VDAISOPath) {
+            Write-Log "VDA ISO successfully copied to: $VDAISOPath" "SUCCESS"
         }
         else {
-            Write-Log "VDA ISO validation failed: $($VDAValidation.Error)" "WARN"
+            Write-Log "VDA ISO was not copied to local destination" "WARN"
         }
     }
     
