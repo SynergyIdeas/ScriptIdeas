@@ -71,8 +71,14 @@ try {
     # Sanitize paths to prevent illegal character errors
     $VDAISOPath = $VDAISOPath.Trim().Replace('\\\\', '\')
     $PVSISOPath = $PVSISOPath.Trim().Replace('\\\\', '\')
-    $WEMPath = Get-ConfigValue -Key "WEMPath" -DefaultValue "" -ConfigFile $ConfigFilePath
-    $UberAgentPath = Get-ConfigValue -Key "UberAgentPath" -DefaultValue "" -ConfigFile $ConfigFilePath
+    
+    # WEM Agent configuration
+    $WEMInstallerSourcePath = Get-ConfigValue -Key "WEMInstallerSourcePath" -DefaultValue "" -ConfigFile $ConfigFilePath
+    $WEMInstallerPath = Get-ConfigValue -Key "WEMInstallerPath" -DefaultValue "$LocalInstallPath\WEMAgent.msi" -ConfigFile $ConfigFilePath
+    
+    # UberAgent configuration
+    $UberAgentInstallerSourcePath = Get-ConfigValue -Key "UberAgentInstallerSourcePath" -DefaultValue "" -ConfigFile $ConfigFilePath
+    $UberAgentInstallerPath = Get-ConfigValue -Key "UberAgentInstallerPath" -DefaultValue "$LocalInstallPath\UberAgent.msi" -ConfigFile $ConfigFilePath
     $UberAgentTemplatesPath = Get-ConfigValue -Key "UberAgentTemplatesPath" -DefaultValue "$NetworkSourcePath\UberAgent\Templates" -ConfigFile $ConfigFilePath
     $UberAgentConfigPath = Get-ConfigValue -Key "UberAgentConfigPath" -DefaultValue "$NetworkSourcePath\UberAgent\Config" -ConfigFile $ConfigFilePath
     $UberAgentLicensePath = Get-ConfigValue -Key "UberAgentLicensePath" -DefaultValue "$NetworkSourcePath\UberAgent\License" -ConfigFile $ConfigFilePath
@@ -97,13 +103,15 @@ try {
     Write-Host "VDA ISO Local: $VDAISOPath" -ForegroundColor White
     Write-Host "PVS ISO Source: $PVSISOSourcePath" -ForegroundColor White
     Write-Host "PVS ISO Local: $PVSISOPath" -ForegroundColor White
-    Write-Host "WEM Agent: $(if([string]::IsNullOrEmpty($WEMPath)){'NOT CONFIGURED'}else{$WEMPath})" -ForegroundColor $(if([string]::IsNullOrEmpty($WEMPath)){'Yellow'}else{'White'})
-    Write-Host "UberAgent: $(if([string]::IsNullOrEmpty($UberAgentPath)){'NOT CONFIGURED'}else{$UberAgentPath})" -ForegroundColor $(if([string]::IsNullOrEmpty($UberAgentPath)){'Yellow'}else{'White'})
+    Write-Host "WEM Agent Source: $(if([string]::IsNullOrEmpty($WEMInstallerSourcePath)){'NOT CONFIGURED'}else{$WEMInstallerSourcePath})" -ForegroundColor $(if([string]::IsNullOrEmpty($WEMInstallerSourcePath)){'Yellow'}else{'White'})
+    Write-Host "WEM Agent Local: $(if([string]::IsNullOrEmpty($WEMInstallerPath)){'NOT CONFIGURED'}else{$WEMInstallerPath})" -ForegroundColor $(if([string]::IsNullOrEmpty($WEMInstallerPath)){'Yellow'}else{'White'})
+    Write-Host "UberAgent Source: $(if([string]::IsNullOrEmpty($UberAgentInstallerSourcePath)){'NOT CONFIGURED'}else{$UberAgentInstallerSourcePath})" -ForegroundColor $(if([string]::IsNullOrEmpty($UberAgentInstallerSourcePath)){'Yellow'}else{'White'})
+    Write-Host "UberAgent Local: $(if([string]::IsNullOrEmpty($UberAgentInstallerPath)){'NOT CONFIGURED'}else{$UberAgentInstallerPath})" -ForegroundColor $(if([string]::IsNullOrEmpty($UberAgentInstallerPath)){'Yellow'}else{'White'})
     Write-Host "UberAgent Templates: $(if([string]::IsNullOrEmpty($UberAgentTemplatesPath)){'NOT CONFIGURED'}else{$UberAgentTemplatesPath})" -ForegroundColor $(if([string]::IsNullOrEmpty($UberAgentTemplatesPath)){'Yellow'}else{'White'})
     Write-Host "UberAgent Config: $(if([string]::IsNullOrEmpty($UberAgentConfigPath)){'NOT CONFIGURED'}else{$UberAgentConfigPath})" -ForegroundColor $(if([string]::IsNullOrEmpty($UberAgentConfigPath)){'Yellow'}else{'White'})
     Write-Host "UberAgent License: $(if([string]::IsNullOrEmpty($UberAgentLicensePath)){'NOT CONFIGURED'}else{$UberAgentLicensePath})" -ForegroundColor $(if([string]::IsNullOrEmpty($UberAgentLicensePath)){'Yellow'}else{'White'})
     Write-Host "IBM TADDM: $(if([string]::IsNullOrEmpty($TADDMPath)){'NOT CONFIGURED'}else{$TADDMPath})" -ForegroundColor $(if([string]::IsNullOrEmpty($TADDMPath)){'Yellow'}else{'White'})
-    Write-Host "TADDM Install Bat: $(if([string]::IsNullOrEmpty($TADDMInstallBatPath)){'NOT CONFIGURED'}else{$TADDMInstallBatPath})" -ForegroundColor $(if([string]::IsNullOrEmpty($TADDMInstallBatPath)){'Yellow'}else{'White'})
+    Write-Host "TADDM Install Bat: $(if([string]::IsNullOrEmpty($TADDMInstallBatPath)){'Auto-configured by install.bat'}else{$TADDMInstallBatPath})" -ForegroundColor White
     Write-Host "Log Path: $LogPath" -ForegroundColor White
     
     # Immediate log file creation test
@@ -138,8 +146,10 @@ catch {
     $VDAISOPath = "$LocalInstallPath\VDA.iso"
     $PVSISOSourcePath = "$NetworkSourcePath\installers\PVS\PVS_Target.iso"
     $PVSISOPath = "$LocalInstallPath\PVS.iso"
-    $WEMPath = ""
-    $UberAgentPath = ""
+    $WEMInstallerSourcePath = ""
+    $WEMInstallerPath = ""
+    $UberAgentInstallerSourcePath = ""
+    $UberAgentInstallerPath = ""
     $UberAgentTemplatesPath = ""
     $UberAgentConfigPath = ""
     $UberAgentLicensePath = ""
@@ -272,8 +282,8 @@ Write-Host "Script Location: $PSScriptRoot" -ForegroundColor Gray
 Write-Host "`nConfigured Installation Paths:" -ForegroundColor Yellow
 Write-Host "VDA ISO: $VDAISOPath"
 Write-Host "PVS ISO: $(if([string]::IsNullOrEmpty($PVSISOPath)){'SKIP'}else{$PVSISOPath})"
-Write-Host "WEM: $(if([string]::IsNullOrEmpty($WEMPath)){'SKIP'}else{$WEMPath})"
-Write-Host "UberAgent: $(if([string]::IsNullOrEmpty($UberAgentPath)){'SKIP'}else{$UberAgentPath})"
+Write-Host "WEM: $(if([string]::IsNullOrEmpty($WEMInstallerPath)){'SKIP'}else{$WEMInstallerPath})"
+Write-Host "UberAgent: $(if([string]::IsNullOrEmpty($UberAgentInstallerPath)){'SKIP'}else{$UberAgentInstallerPath})"
 Write-Host "TADDM: $(if([string]::IsNullOrEmpty($TADDMPath)){'SKIP'}else{$TADDMPath})"
 Write-Host "Functions: $FunctionsPath"
 Write-Host "Log: $LogPath"
@@ -370,8 +380,8 @@ if (!$Stage2Found) {
 # Check optional installers with enhanced validation
 $OptionalComponents = @(
     @{ Name = "PVS Target Device"; Path = $PVSISOPath; Variable = "PVSISOPath" },
-    @{ Name = "WEM Agent"; Path = $WEMPath; Variable = "WEMPath" },
-    @{ Name = "UberAgent"; Path = $UberAgentPath; Variable = "UberAgentPath" },
+    @{ Name = "WEM Agent"; Path = $WEMInstallerSourcePath; Variable = "WEMInstallerSourcePath" },
+    @{ Name = "UberAgent"; Path = $UberAgentInstallerSourcePath; Variable = "UberAgentInstallerSourcePath" },
     @{ Name = "UberAgent Templates"; Path = $UberAgentTemplatesPath; Variable = "UberAgentTemplatesPath" },
     @{ Name = "UberAgent Config"; Path = $UberAgentConfigPath; Variable = "UberAgentConfigPath" },
     @{ Name = "UberAgent License"; Path = $UberAgentLicensePath; Variable = "UberAgentLicensePath" }
@@ -449,8 +459,7 @@ if (![string]::IsNullOrEmpty($TADDMPath)) {
     }
     
     if (!$TADDMFound) {
-        $ValidationWarnings += "IBM TADDM installation not found in standard locations"
-        Write-Host "  TADDM installation: NOT FOUND" -ForegroundColor Yellow
+        Write-Host "  TADDM installation: Will be configured by install.bat" -ForegroundColor White
     }
 }
 
@@ -533,8 +542,8 @@ if (!$CanProceed) {
 Write-Host "`nReady to start installation with the following configuration:" -ForegroundColor Cyan
 Write-Host "  VDA ISO: $VDAISOPath"
 if (![string]::IsNullOrEmpty($PVSISOPath)) { Write-Host "  PVS ISO: $PVSISOPath" }
-if (![string]::IsNullOrEmpty($WEMPath)) { Write-Host "  WEM: $WEMPath" }
-if (![string]::IsNullOrEmpty($UberAgentPath)) { Write-Host "  UberAgent: $UberAgentPath" }
+if (![string]::IsNullOrEmpty($WEMInstallerSourcePath)) { Write-Host "  WEM: $WEMInstallerSourcePath" }
+if (![string]::IsNullOrEmpty($UberAgentInstallerSourcePath)) { Write-Host "  UberAgent: $UberAgentInstallerSourcePath" }
 if (![string]::IsNullOrEmpty($TADDMPath)) { Write-Host "  TADDM: $TADDMPath" }
 Write-Host "  Enhanced Error Handling: Enabled"
 
@@ -639,35 +648,50 @@ try {
         }
     }
     
-    # Copy installation files from network location with enhanced validation
-    Write-LogHeader "Installation Files Copy Operation"
-    Write-Log "Copying installation files from network location..."
+    # Simple file copy to temp directory
+    Write-LogHeader "Copy Installation Files to Temp Directory"
+    Write-Log "Copying .iso and .exe files to C:\Temp..."
     
-    # Generate timestamped log for detailed file operations
-    $FileOperationsLog = Get-DesktopLogPath
-    Write-Log "Enhanced file operations logging to: $FileOperationsLog" "INFO"
-    
-    # Use the already configured LocalInstallPath
-    $LocalPath = $LocalInstallPath
-    $CopySuccess = Copy-InstallationFiles -NetworkPath $NetworkSourcePath -LocalPath $LocalPath -Force
-    
-    # Validate copied files after successful copy operation
-    if ($CopySuccess) {
-        Write-Log "Performing copied file integrity validation..." "INFO"
-        
-        # Only validate if file was actually copied to local destination
-        if (Test-Path $VDAISOPath) {
-            Write-Log "VDA ISO successfully copied to: $VDAISOPath" "SUCCESS"
+    # Define files to copy
+    $FilesToCopy = @{
+        "VDA_ISO" = @{
+            Source = $VDAISOSourcePath
+            Destination = $VDAISOPath
         }
-        else {
-            Write-Log "VDA ISO was not copied to local destination" "WARN"
+        "PVS_ISO" = @{
+            Source = $PVSISOSourcePath
+            Destination = $PVSISOPath
+        }
+        "WEM_Agent" = @{
+            Source = $WEMInstallerSourcePath
+            Destination = $WEMInstallerPath
+        }
+        "UberAgent" = @{
+            Source = $UberAgentInstallerSourcePath
+            Destination = $UberAgentInstallerPath
         }
     }
     
-    if (!$CopySuccess) {
-        Write-Log "Warning: Some installation files could not be copied from network location" "WARN"
-        Write-Log "Installation will attempt to use existing local files or continue with available components" "WARN"
+    # Copy all files
+    $CopyResults = Copy-AllInstallationFiles -FilesToCopy $FilesToCopy -TempDirectory $LocalInstallPath
+    
+    # Validate all files exist in temp
+    $FilesToValidate = @()
+    if (![string]::IsNullOrEmpty($VDAISOPath)) { $FilesToValidate += $VDAISOPath }
+    if (![string]::IsNullOrEmpty($PVSISOPath)) { $FilesToValidate += $PVSISOPath }
+    if (![string]::IsNullOrEmpty($WEMInstallerPath)) { $FilesToValidate += $WEMInstallerPath }
+    if (![string]::IsNullOrEmpty($UberAgentInstallerPath)) { $FilesToValidate += $UberAgentInstallerPath }
+    
+    $ValidationResults = Validate-InstallationFiles -FilePaths $FilesToValidate
+    
+    if (-not $ValidationResults.AllValid) {
+        Write-Log "Some installation files are missing - proceeding with available files only" "WARN"
+    } else {
+        Write-Log "All installation files successfully copied and validated" "SUCCESS"
     }
+    
+    # Continue with installation using files in temp directory
+    $CopySuccess = $CopyResults.Success
     
     # Basic system validation (VDA installer handles its own prerequisites)
     Write-LogHeader "Basic System Validation"
@@ -699,13 +723,15 @@ try {
     Write-LogHeader "Enhanced Installation Configuration"
     Write-Log "VDA ISO Path: $VDAISOPath"
     Write-Log "PVS ISO Path: $(if([string]::IsNullOrEmpty($PVSISOPath)){'Not specified - SKIP'}else{$PVSISOPath})"
-    Write-Log "WEM Path: $(if([string]::IsNullOrEmpty($WEMPath)){'Not specified - SKIP'}else{$WEMPath})"
-    Write-Log "UberAgent Installer: $(if([string]::IsNullOrEmpty($UberAgentPath)){'Not specified - SKIP'}else{$UberAgentPath})"
+    Write-Log "WEM Source Path: $(if([string]::IsNullOrEmpty($WEMInstallerSourcePath)){'Not specified - SKIP'}else{$WEMInstallerSourcePath})"
+    Write-Log "WEM Local Path: $(if([string]::IsNullOrEmpty($WEMInstallerPath)){'Not specified - SKIP'}else{$WEMInstallerPath})"
+    Write-Log "UberAgent Source Path: $(if([string]::IsNullOrEmpty($UberAgentInstallerSourcePath)){'Not specified - SKIP'}else{$UberAgentInstallerSourcePath})"
+    Write-Log "UberAgent Local Path: $(if([string]::IsNullOrEmpty($UberAgentInstallerPath)){'Not specified - SKIP'}else{$UberAgentInstallerPath})"
     Write-Log "UberAgent Templates: $(if([string]::IsNullOrEmpty($UberAgentTemplatesPath)){'Not specified - SKIP'}else{$UberAgentTemplatesPath})"
     Write-Log "UberAgent Config: $(if([string]::IsNullOrEmpty($UberAgentConfigPath)){'Not specified - SKIP'}else{$UberAgentConfigPath})"
     Write-Log "UberAgent License: $(if([string]::IsNullOrEmpty($UberAgentLicensePath)){'Not specified - SKIP'}else{$UberAgentLicensePath})"
     Write-Log "TADDM Path: $(if([string]::IsNullOrEmpty($TADDMPath)){'Not specified - SKIP'}else{$TADDMPath})"
-    Write-Log "TADDM Install.bat: $(if([string]::IsNullOrEmpty($TADDMInstallBatPath)){'Auto-detect'}else{$TADDMInstallBatPath})"
+    Write-Log "TADDM Install.bat: $(if([string]::IsNullOrEmpty($TADDMInstallBatPath)){'Auto-configured by install.bat'}else{$TADDMInstallBatPath})"
     Write-Log "Functions Path: $FunctionsPath"
     Write-Log "Stage 2 Script Path: $Stage2ScriptPath"
     Write-Log "Pagefile Size: $PagefileSizeGB GB (Fixed)"
@@ -727,8 +753,10 @@ try {
     # Override paths with script parameters
     $InstallConfig.VDAISOPath = $VDAISOPath
     $InstallConfig.PVSISOPath = $PVSISOPath
-    $InstallConfig.WEMPath = $WEMPath
-    $InstallConfig.UberAgentPath = $UberAgentPath
+    $InstallConfig.WEMInstallerSourcePath = $WEMInstallerSourcePath
+    $InstallConfig.WEMInstallerPath = $WEMInstallerPath
+    $InstallConfig.UberAgentInstallerSourcePath = $UberAgentInstallerSourcePath
+    $InstallConfig.UberAgentInstallerPath = $UberAgentInstallerPath
     $InstallConfig.TADDMPath = $TADDMPath
     
     # Add additional parameters
@@ -874,9 +902,9 @@ try {
         $InstallConfig.InstallationResults.PVS = @{ Skipped = $true }
     }
     
-    # Install WEM Agent (if specified, no WEM infrastructure server required)
-    if (![string]::IsNullOrEmpty($WEMInstallerSourcePath)) {
-        Write-Log "Installing WEM Agent (no infrastructure server required)..."
+    # Install WEM Agent (if file exists in temp)
+    if (![string]::IsNullOrEmpty($WEMInstallerPath) -and (Test-Path $WEMInstallerPath)) {
+        Write-Log "Installing WEM Agent from temp directory..."
         $WEMResult = Add-WEMAgent -WEMSourcePath $WEMInstallerSourcePath -WEMPath $WEMInstallerPath
         $InstallConfig.InstallationResults.WEM = $WEMResult
         
@@ -897,11 +925,11 @@ try {
         $InstallConfig.InstallationResults.WEM = @{ Skipped = $true }
     }
     
-    # Install UberAgent with enhanced template management (if specified)
-    if (![string]::IsNullOrEmpty($UberAgentPath)) {
-        Write-Log "Installing UberAgent with enhanced template and configuration management..."
+    # Install UberAgent (if file exists in temp)
+    if (![string]::IsNullOrEmpty($UberAgentInstallerPath) -and (Test-Path $UberAgentInstallerPath)) {
+        Write-Log "Installing UberAgent from temp directory..."
         
-        $UberAgentResult = Add-UberAgent -UberAgentPath $UberAgentPath -ConfigFilePath $ConfigFilePath
+        $UberAgentResult = Add-UberAgent -UberAgentPath $UberAgentInstallerPath -ConfigFilePath $ConfigFilePath
         $InstallConfig.InstallationResults.UberAgent = $UberAgentResult
         
         if ($UberAgentResult.OverallSuccess) {
@@ -918,7 +946,7 @@ try {
         }
     }
     else {
-        Write-Log "UberAgent installation skipped - no path specified"
+        Write-Log "UberAgent installation skipped - file not found in temp directory"
         $InstallConfig.InstallationResults.UberAgent = @{ Skipped = $true }
     }
     

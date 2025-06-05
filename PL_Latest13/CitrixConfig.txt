@@ -32,10 +32,12 @@ PVSISOSourcePath=%NetworkSourcePath%\installers\PVS\PVS_Target_2402.iso
 PVSISOPath=%LocalInstallPath%\PVS.iso
 
 # WEM Agent Installation (leave empty to skip)
-WEMPath=%NetworkSourcePath%\installers\WEM\Citrix_Workspace_Environment_Management_Agent_2402.msi
+WEMInstallerSourcePath=%NetworkSourcePath%\installers\WEM\Citrix_Workspace_Environment_Management_Agent_2402.msi
+WEMInstallerPath=%LocalInstallPath%\WEMAgent.msi
 
 # UberAgent Installation (leave empty to skip)
-UberAgentPath=%NetworkSourcePath%\installers\UberAgent\uberAgent_7.0.0.msi
+UberAgentInstallerSourcePath=%NetworkSourcePath%\installers\UberAgent\uberAgent_7.0.0.msi
+UberAgentInstallerPath=%LocalInstallPath%\UberAgent.msi
 
 # UberAgent Template and Configuration Files
 UberAgentTemplatesPath=%NetworkSourcePath%\UberAgent\Templates

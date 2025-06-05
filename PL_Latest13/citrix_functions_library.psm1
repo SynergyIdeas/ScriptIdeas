@@ -1055,59 +1055,160 @@ function Get-DesktopLogPath {
     }
 }
 
-function Copy-InstallationFiles {
+function Copy-AllInstallationFiles {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory=$true)]
-        [string]$NetworkPath,
+        [hashtable]$FilesToCopy,
         
         [Parameter(Mandatory=$true)]
-        [string]$LocalPath,
-        
-        [Parameter(Mandatory=$false)]
-        [switch]$Force = $false
+        [string]$TempDirectory = "C:\Temp"
     )
     
     try {
-        Write-Log "Attempting to copy installation files from network location..."
-        Write-Log "Source: $NetworkPath"
-        Write-Log "Destination: $LocalPath"
+        Write-Log "Starting simple file copy to temp directory..."
         
-        # Ensure local path exists
-        if (-not (Test-Path $LocalPath)) {
-            New-Item -Path $LocalPath -ItemType Directory -Force | Out-Null
+        # Ensure temp directory exists
+        if (-not (Test-Path $TempDirectory)) {
+            New-Item -Path $TempDirectory -ItemType Directory -Force | Out-Null
+            Write-Log "Created temp directory: $TempDirectory"
         }
         
-        # Check if network path is accessible
-        if (-not (Test-Path $NetworkPath)) {
-            Write-Log "Network path not accessible: $NetworkPath" "WARN"
-            return $false
+        $Results = @{
+            Success = $true
+            CopiedFiles = @()
+            FailedFiles = @()
+            TotalFiles = 0
+            SuccessfulCopies = 0
         }
         
-        # Copy files using robocopy for better handling
-        $RobocopyArgs = @($NetworkPath, $LocalPath, "/E", "/R:2", "/W:5", "/NFL", "/NDL")
-        if ($Force) {
-            $RobocopyArgs += "/IS"
-        }
-        
-        $Process = Start-Process -FilePath "robocopy" -ArgumentList $RobocopyArgs -Wait -PassThru -NoNewWindow
-        
-        # Robocopy exit codes 0-3 are successful
-        if ($Process.ExitCode -le 3) {
-            Write-Log "Installation files copied successfully" "SUCCESS"
-            return $true
-        } else {
-            Write-Log "Robocopy failed, using PowerShell copy..." "WARN"
+        # Copy each file
+        foreach ($FileInfo in $FilesToCopy.GetEnumerator()) {
+            $SourcePath = $FileInfo.Value.Source
+            $DestinationPath = $FileInfo.Value.Destination
+            $FileType = $FileInfo.Key
             
-            # Fallback to PowerShell copy
-            Copy-Item -Path "$NetworkPath\*" -Destination $LocalPath -Recurse -Force -ErrorAction Stop
-            Write-Log "Installation files copied using PowerShell" "SUCCESS"
-            return $true
+            $Results.TotalFiles++
+            
+            if ([string]::IsNullOrEmpty($SourcePath)) {
+                Write-Log "Skipping $FileType - no source path specified" "INFO"
+                continue
+            }
+            
+            Write-Log "Copying $FileType..."
+            Write-Log "  From: $SourcePath"
+            Write-Log "  To: $DestinationPath"
+            
+            # Check source exists
+            if (-not (Test-Path $SourcePath)) {
+                Write-Log "Source file not found: $SourcePath" "ERROR"
+                $Results.FailedFiles += @{
+                    Type = $FileType
+                    Source = $SourcePath
+                    Destination = $DestinationPath
+                    Error = "Source file not found"
+                }
+                $Results.Success = $false
+                continue
+            }
+            
+            # Simple copy operation
+            try {
+                Copy-Item -Path $SourcePath -Destination $DestinationPath -Force -ErrorAction Stop
+                
+                # Validate copy
+                if (Test-Path $DestinationPath) {
+                    Write-Log "$FileType copied successfully" "SUCCESS"
+                    $Results.CopiedFiles += @{
+                        Type = $FileType
+                        Source = $SourcePath
+                        Destination = $DestinationPath
+                    }
+                    $Results.SuccessfulCopies++
+                } else {
+                    throw "Destination file not created"
+                }
+            }
+            catch {
+                Write-Log "Failed to copy $FileType`: $($_.Exception.Message)" "ERROR"
+                $Results.FailedFiles += @{
+                    Type = $FileType
+                    Source = $SourcePath
+                    Destination = $DestinationPath
+                    Error = $_.Exception.Message
+                }
+                $Results.Success = $false
+            }
         }
+        
+        # Summary
+        Write-Log "File copy summary: $($Results.SuccessfulCopies)/$($Results.TotalFiles) files copied successfully"
+        
+        return $Results
     }
     catch {
-        Write-Log "Failed to copy installation files: $($_.Exception.Message)" "WARN"
-        return $false
+        Write-Log "File copy operation failed: $($_.Exception.Message)" "ERROR"
+        return @{
+            Success = $false
+            CopiedFiles = @()
+            FailedFiles = @()
+            TotalFiles = 0
+            SuccessfulCopies = 0
+            Error = $_.Exception.Message
+        }
+    }
+}
+
+function Validate-InstallationFiles {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory=$true)]
+        [string[]]$FilePaths
+    )
+    
+    try {
+        Write-Log "Validating all installation files exist in temp directory..."
+        
+        $Results = @{
+            AllValid = $true
+            ValidFiles = @()
+            MissingFiles = @()
+            TotalFiles = $FilePaths.Count
+        }
+        
+        foreach ($FilePath in $FilePaths) {
+            if ([string]::IsNullOrEmpty($FilePath)) {
+                continue
+            }
+            
+            if (Test-Path $FilePath) {
+                $FileSize = (Get-Item $FilePath).Length
+                Write-Log "FOUND: $(Split-Path $FilePath -Leaf) ($([math]::Round($FileSize/1MB, 2)) MB)" "SUCCESS"
+                $Results.ValidFiles += $FilePath
+            } else {
+                Write-Log "MISSING: $FilePath" "ERROR"
+                $Results.MissingFiles += $FilePath
+                $Results.AllValid = $false
+            }
+        }
+        
+        if ($Results.AllValid) {
+            Write-Log "All installation files validated successfully" "SUCCESS"
+        } else {
+            Write-Log "Missing $($Results.MissingFiles.Count) installation files" "ERROR"
+        }
+        
+        return $Results
+    }
+    catch {
+        Write-Log "File validation failed: $($_.Exception.Message)" "ERROR"
+        return @{
+            AllValid = $false
+            ValidFiles = @()
+            MissingFiles = @()
+            TotalFiles = 0
+            Error = $_.Exception.Message
+        }
     }
 }
 
@@ -2570,21 +2671,63 @@ function Add-WEMAgent {
     )
     
     try {
-        Write-Log "Installing WEM Agent..."
+        Write-Log "Installing WEM Agent from local copy..."
         
+        $Results = @{
+            Success = $false
+            Skipped = $false
+            RebootRequired = $false
+            Error = $null
+        }
+        
+        # Check if WEM installer path is provided
+        if ([string]::IsNullOrEmpty($WEMPath)) {
+            Write-Log "WEM Agent installation skipped - no installer path specified" "INFO"
+            $Results.Skipped = $true
+            $Results.Success = $true
+            return $Results
+        }
+        
+        # Check if WEM installer exists at local path
         if (Test-Path $WEMPath) {
-            Start-Process -FilePath $WEMPath -ArgumentList "/quiet" -Wait
-            Write-Log "WEM Agent installation completed" "SUCCESS"
-            return $true
+            Write-Log "Installing WEM Agent from: $WEMPath" "INFO"
+            $WEMProcess = Start-Process -FilePath $WEMPath -ArgumentList "/quiet" -Wait -PassThru
+            
+            if ($WEMProcess.ExitCode -eq 0) {
+                Write-Log "WEM Agent installation completed successfully" "SUCCESS"
+                $Results.Success = $true
+                
+                # Check if WEM Agent service exists (indicates successful installation)
+                $WEMService = Get-Service -Name "Norskale Agent Host Service" -ErrorAction SilentlyContinue
+                if ($WEMService) {
+                    Write-Log "WEM Agent service detected - installation verified" "SUCCESS"
+                } else {
+                    Write-Log "WEM Agent service not found - installation may require reboot" "WARN"
+                    $Results.RebootRequired = $true
+                }
+            } else {
+                $ErrorMsg = "WEM Agent installation failed with exit code: $($WEMProcess.ExitCode)"
+                Write-Log $ErrorMsg "ERROR"
+                $Results.Error = $ErrorMsg
+            }
         }
         else {
-            Write-Log "WEM installer not found at: $WEMPath" "ERROR"
-            return $false
+            $ErrorMsg = "WEM installer not found at: $WEMPath"
+            Write-Log $ErrorMsg "ERROR"
+            $Results.Error = $ErrorMsg
         }
+        
+        return $Results
     }
     catch {
-        Write-Log "Failed to install WEM Agent: $($_.Exception.Message)" "ERROR"
-        return $false
+        $ErrorMsg = "Failed to install WEM Agent: $($_.Exception.Message)"
+        Write-Log $ErrorMsg "ERROR"
+        return @{
+            Success = $false
+            Skipped = $false
+            RebootRequired = $false
+            Error = $ErrorMsg
+        }
     }
 }
 
