@@ -82,8 +82,7 @@ try {
     $UberAgentTemplatesPath = Get-ConfigValue -Key "UberAgentTemplatesPath" -DefaultValue "$NetworkSourcePath\UberAgent\Templates" -ConfigFile $ConfigFilePath
     $UberAgentConfigPath = Get-ConfigValue -Key "UberAgentConfigPath" -DefaultValue "$NetworkSourcePath\UberAgent\Config" -ConfigFile $ConfigFilePath
     $UberAgentLicensePath = Get-ConfigValue -Key "UberAgentLicensePath" -DefaultValue "$NetworkSourcePath\UberAgent\License" -ConfigFile $ConfigFilePath
-    $TADDMPath = Get-ConfigValue -Key "TADDMPath" -DefaultValue "" -ConfigFile $ConfigFilePath
-    $TADDMInstallBatPath = Get-ConfigValue -Key "TADDMInstallBatPath" -DefaultValue "" -ConfigFile $ConfigFilePath
+    $TADDMPath = Get-ConfigValue -Key "TADDMPath" -DefaultValue "C:\IBM\TADDM\nonadmin_scripts\install.bat" -ConfigFile $ConfigFilePath
     $LogPath = Get-ConfigValue -Key "LogPath" -DefaultValue "" -ConfigFile $ConfigFilePath
     
     # If no log path specified in config, create desktop log path
@@ -111,7 +110,7 @@ try {
     Write-Host "UberAgent Config: $(if([string]::IsNullOrEmpty($UberAgentConfigPath)){'NOT CONFIGURED'}else{$UberAgentConfigPath})" -ForegroundColor $(if([string]::IsNullOrEmpty($UberAgentConfigPath)){'Yellow'}else{'White'})
     Write-Host "UberAgent License: $(if([string]::IsNullOrEmpty($UberAgentLicensePath)){'NOT CONFIGURED'}else{$UberAgentLicensePath})" -ForegroundColor $(if([string]::IsNullOrEmpty($UberAgentLicensePath)){'Yellow'}else{'White'})
     Write-Host "IBM TADDM: $(if([string]::IsNullOrEmpty($TADDMPath)){'NOT CONFIGURED'}else{$TADDMPath})" -ForegroundColor $(if([string]::IsNullOrEmpty($TADDMPath)){'Yellow'}else{'White'})
-    Write-Host "TADDM Install Bat: $(if([string]::IsNullOrEmpty($TADDMInstallBatPath)){'Auto-configured by install.bat'}else{$TADDMInstallBatPath})" -ForegroundColor White
+    Write-Host "TADDM Install Bat: $(if(Test-Path $TADDMPath){'Found at ' + $TADDMPath}else{'Not found - will skip'})" -ForegroundColor White
     Write-Host "Log Path: $LogPath" -ForegroundColor White
     
     # Immediate log file creation test
@@ -154,7 +153,7 @@ catch {
     $UberAgentConfigPath = ""
     $UberAgentLicensePath = ""
     $TADDMPath = ""
-    $TADDMInstallBatPath = ""
+
     $LogPath = Get-DesktopLogPath
     $PagefileSizeGB = 8
 }
@@ -441,9 +440,9 @@ if (![string]::IsNullOrEmpty($TADDMPath)) {
     
     $TADDMFound = $false
     $TADDMSearchPaths = @(
-        $TADDMPath,
+        "C:\IBM\TADDM\nonadmin_scripts\install.bat",
         "C:\Program Files\IBM\TADDM",
-        "C:\Program Files (x86)\IBM\TADDM",
+        "C:\Program Files (x86)\IBM\TADDM", 
         "C:\IBM\TADDM",
         "C:\Program Files\IBM\Tivoli\TADDM",
         "C:\Program Files (x86)\IBM\Tivoli\TADDM"
@@ -459,7 +458,15 @@ if (![string]::IsNullOrEmpty($TADDMPath)) {
     }
     
     if (!$TADDMFound) {
-        Write-Host "  TADDM installation: Will be configured by install.bat" -ForegroundColor White
+        # Check specifically for local install.bat
+        $LocalInstallBat = "C:\IBM\TADDM\nonadmin_scripts\install.bat"
+        if (Test-Path $LocalInstallBat) {
+            Write-Host "  TADDM install.bat found: $LocalInstallBat" -ForegroundColor Green
+            $TADDMPath = $LocalInstallBat
+            $TADDMFound = $true
+        } else {
+            Write-Host "  TADDM: Local install.bat not found, will skip" -ForegroundColor Gray
+        }
     }
 }
 
@@ -731,7 +738,7 @@ try {
     Write-Log "UberAgent Config: $(if([string]::IsNullOrEmpty($UberAgentConfigPath)){'Not specified - SKIP'}else{$UberAgentConfigPath})"
     Write-Log "UberAgent License: $(if([string]::IsNullOrEmpty($UberAgentLicensePath)){'Not specified - SKIP'}else{$UberAgentLicensePath})"
     Write-Log "TADDM Path: $(if([string]::IsNullOrEmpty($TADDMPath)){'Not specified - SKIP'}else{$TADDMPath})"
-    Write-Log "TADDM Install.bat: $(if([string]::IsNullOrEmpty($TADDMInstallBatPath)){'Auto-configured by install.bat'}else{$TADDMInstallBatPath})"
+    Write-Log "TADDM Install.bat: $(if(Test-Path $TADDMPath){'Found at ' + $TADDMPath}else{'Not found - will skip'})"
     Write-Log "Functions Path: $FunctionsPath"
     Write-Log "Stage 2 Script Path: $Stage2ScriptPath"
     Write-Log "Pagefile Size: $PagefileSizeGB GB (Fixed)"
@@ -764,7 +771,7 @@ try {
         UberAgentTemplatesPath = $UberAgentTemplatesPath
         UberAgentConfigPath = $UberAgentConfigPath
         UberAgentLicensePath = $UberAgentLicensePath
-        TADDMInstallBatPath = $TADDMInstallBatPath
+
         LogPath = $LogPath
         PagefileSizeGB = $PagefileSizeGB
         ValidationMode = $ValidationMode
@@ -950,31 +957,32 @@ try {
         $InstallConfig.InstallationResults.UberAgent = @{ Skipped = $true }
     }
     
-    # Configure IBM TADDM permissions (if specified)
-    if (![string]::IsNullOrEmpty($TADDMPath)) {
-        Write-Log "Configuring IBM TADDM permissions for non-administrator discovery..."
+    # Configure IBM TADDM using local install.bat
+    $LocalTADDMInstallBat = "C:\IBM\TADDM\nonadmin_scripts\install.bat"
+    if (Test-Path $LocalTADDMInstallBat) {
+        Write-Log "Executing IBM TADDM install.bat for non-administrator configuration..."
         
         $TADDMParams = @{
-            TADDMPath = $TADDMPath
+            TADDMPath = $LocalTADDMInstallBat
             CreateGroupIfMissing = $true
-        }
-        
-        if (![string]::IsNullOrEmpty($TADDMInstallBatPath)) {
-            $TADDMParams.InstallBatPath = $TADDMInstallBatPath
         }
         
         $TADDMResult = Set-IBMTADDMPermissions @TADDMParams
         $InstallConfig.InstallationResults.TADDM = $TADDMResult
         
         if ($TADDMResult.OverallSuccess) {
-            Write-Log "IBM TADDM permissions configured successfully" "SUCCESS"
+            if ($TADDMResult.InstallBatExecuted) {
+                Write-Log "IBM TADDM install.bat executed successfully" "SUCCESS"
+            } elseif ($TADDMResult.PermissionsConfigured) {
+                Write-Log "IBM TADDM permissions configured successfully" "SUCCESS"
+            }
         }
         elseif (!$TADDMResult.Skipped) {
-            Write-Log "IBM TADDM configuration encountered issues" "WARN"
+            Write-Log "IBM TADDM configuration encountered issues: $($TADDMResult.Error)" "WARN"
         }
     }
     else {
-        Write-Log "IBM TADDM configuration skipped - no path specified"
+        Write-Log "IBM TADDM configuration skipped - local install.bat not found at: $LocalTADDMInstallBat"
         $InstallConfig.InstallationResults.TADDM = @{ Skipped = $true }
     }
     

@@ -36,29 +36,29 @@ WEMInstallerSourcePath=%NetworkSourcePath%\installers\WEM\Citrix_Workspace_Envir
 WEMInstallerPath=%LocalInstallPath%\WEMAgent.msi
 
 # UberAgent Installation (leave empty to skip)
-UberAgentInstallerSourcePath=%NetworkSourcePath%\installers\UberAgent\uberAgent_7.0.0.msi
+UberAgentInstallerSourcePath=%NetworkSourcePath%\installers\UberAgent\\uberAgent_7.0.0.msi
 UberAgentInstallerPath=%LocalInstallPath%\UberAgent.msi
 
 # UberAgent Template and Configuration Files
 UberAgentTemplatesPath=%NetworkSourcePath%\UberAgent\Templates
 UberAgentTemplatesSourcePath=%NetworkSourcePath%\UberAgent\Templates
-UberAgentTemplatesLocalPath=C:\Program Files\vast limits\uberAgent\config\templates
+UberAgentTemplatesLocalPath=C:\Program Files\vast limits\\uberAgent\config\templates
 UberAgentConfigPath=%NetworkSourcePath%\UberAgent\Config
 UberAgentConfigSourcePath=%NetworkSourcePath%\UberAgent\uberagent.conf
-UberAgentConfigLocalPath=C:\Program Files\vast limits\uberAgent\config\uberagent.conf
+UberAgentConfigLocalPath=C:\Program Files\vast limits\uberAgent\config\\uberagent.conf
 UberAgentLicensePath=%NetworkSourcePath%\UberAgent\License
 UberAgentLicenseSourcePath=%NetworkSourcePath%\UberAgent\uberagent.lic
-UberAgentLicenseLocalPath=C:\Program Files\vast limits\uberAgent\config\uberagent.lic
+UberAgentLicenseLocalPath=C:\Program Files\vast limits\\uberAgent\config\\uberagent.lic
 
 # UberAgent Post-Installation Configuration
-UberAgentOutputDirectory=D:\Logs\uberAgent\%UberAgentOutputQueueName%
+UberAgentOutputDirectory=D:\Logs\\uberAgent\%UberAgentOutputQueueName%
 UberAgentOutputQueueName=Output Queue
 UberAgentServiceName=uberAgentsvc
 UberAgentRegistryPath=HKLM:\Software\vast limits\uberAgent
 UberAgentTempLogPattern=uberagent*.log
 
-# IBM TADDM Installation (leave empty to skip)
-TADDMPath=%NetworkSourcePath%\installers\TADDM\install.bat
+# IBM TADDM Installation (local install.bat execution)
+TADDMPath=C:\IBM\TADDM\nonadmin_scripts\install.bat
 
 # Stage 2 Script Network Path (for copying to LocalInstallPath)
 Stage2ScriptNetworkPath=%NetworkSourcePath%\scripts\citrix_stage2_script.ps1
@@ -78,27 +78,24 @@ StartupScriptsSourceWin2022=%NetworkSourcePath%\scripts\startup\win2022
 ShutdownScriptsSourceWin2022=%NetworkSourcePath%\scripts\shutdown\win2022
 
 # Local Destination Paths (fully configurable)
-# These directories will be created automatically if they don't exist
-# Scripts copied here are registered for Group Policy execution
-StartupScriptsDestination=C:\Scripts\Startup
-ShutdownScriptsDestination=C:\Scripts\Shutdown
+StartupScriptsDestination=C:\Windows\System32\GroupPolicy\Machine\Scripts\Startup
+ShutdownScriptsDestination=C:\Windows\System32\GroupPolicy\Machine\Scripts\Shutdown
 
 # ======================
-# SYSTEM CONFIGURATION
+# CITRIX OPTIMIZER CONFIGURATION
 # ======================
+# Citrix Optimizer tool configuration for VDI template optimization
 
-# Logging configuration
-LogPath=%USERPROFILE%\Desktop\Citrix_Install_%DATE%_%TIME%.log
-VerboseLogging=true
-
-# Pagefile configuration (in GB)
-PagefileSizeGB=8
+CitrixOptimizerPath=%NetworkSourcePath%\tools\CitrixOptimizer\CitrixOptimizer.exe
+CitrixOptimizerTemplatesPath=%NetworkSourcePath%\tools\CitrixOptimizer\Templates
+CitrixOptimizerOutputPath=%LocalInstallPath%\CitrixOptimizer_Results
+CitrixOptimizerTemplate=Windows_Server_2019_VDI.xml
 
 # ======================
-# INSTALLATION OPTIONS
+# INSTALLATION CONTROL FLAGS
 # ======================
+# Enable/disable specific installation components
 
-# Component installation flags (true/false)
 InstallVDA=true
 InstallPVS=true
 InstallWEM=false
@@ -107,132 +104,78 @@ InstallTADDM=false
 
 # System optimization settings
 EnableVDIOptimizations=true
-ConfigurePagefile=true
-OptimizeServices=true
-ApplyRegistryOptimizations=true
-
-# Network configuration
-DisableNetBIOS=true
-DisableNetworkOffload=true
-
-# SMB optimization parameters
-SMBMaxWorkItems=2000
-SMBMaxMpxCt=800
-SMBMaxRawWorkItems=200
-SMBMaxFreeConnections=64
-SMBMinFreeConnections=20
+DisableWindowsServices=true
+ConfigureEventLogRedirection=true
 
 # ======================
-# VALIDATION SETTINGS
+# SYSTEM CONFIGURATION
 # ======================
+# Core system configuration parameters
 
-# Validation mode: Standard, Enhanced, or Strict
-ValidationMode=Enhanced
+# Cache drive configuration (D: drive mandatory for VDI performance)
+CacheDriveLetter=D
+CachePagefileSize=8192
+RedirectEventLogsToCache=true
+RedirectUserProfilesToCache=true
 
-# Continue installation despite warnings
-ContinueOnWarnings=true
+# CD/DVD drive relocation (automatically moved to Y: for VDI compatibility)
+CDDVMTargetDrive=Y
 
-# ======================
-# DNS CONFIGURATION
-# ======================
-# Configure DNS suffix settings for proper domain resolution
+# DNS configuration
+DNSSuffix=domain.local
+ConfigureDNSSuffix=true
 
-# Primary DNS suffix (leave empty to skip configuration)
-PrimaryDNSSuffix=yourdomain.local
-
-# DNS suffix search list (comma-separated, leave empty to skip)
-DNSSuffixSearchList=yourdomain.local,corp.yourdomain.local
-
-# DNS suffix behavior settings (true/false)
-AppendPrimarySuffixes=true
-AppendParentSuffixes=true
-RegisterThisConnectionsAddress=true
+# Pagefile configuration
+PagefileSizeGB=8
+PagefileLocation=D:\pagefile.sys
 
 # ======================
 # DOMAIN CONFIGURATION
 # ======================
-# Note: Domain credentials will be prompted during execution for security
-# Do not store credentials in this configuration file
+# Domain join configuration (leave empty to skip domain join)
 
-# Domain join settings (true/false)
-JoinDomain=true
-
-# Domain information (used only if JoinDomain=true)
-DomainName=yourdomain.local
-OrganizationalUnit=OU=Citrix,OU=Servers,DC=yourdomain,DC=local
+DomainName=domain.local
+DomainJoinUser=
+DomainJoinPassword=
+JoinDomain=false
 
 # ======================
-# ADVANCED SETTINGS
+# VALIDATION AND ERROR HANDLING
 # ======================
+# Script validation and error handling configuration
 
-# Cleanup temporary files after installation
-CleanupTemporaryFiles=true
+ValidationMode=Enhanced
+ContinueOnWarnings=true
+CreateBackups=true
+DetailedLogging=true
 
-# Create detailed installation report
-CreateDetailedReport=true
-
-# Automatic reboot after Stage 1
-AutoReboot=true
-
-# Stage 2 auto-execution delay (seconds)
-Stage2Delay=120
-
-# Maximum installation timeout (minutes)
-InstallationTimeout=60
-
-# Retry attempts for network operations
-NetworkRetryAttempts=3
-
-# File copy verification
-VerifyFileCopies=true
-
-# Event log configuration
-ConfigureEventLogs=true
-
-# Maximum log file size (MB)
-MaxLogFileSizeMB=50
+# Log file configuration
+LogPath=%USERPROFILE%\Desktop\CitrixInstallation_%DATE%_%TIME%.log
+LogLevel=Detailed
+ArchiveOldLogs=true
 
 # ======================
-# TROUBLESHOOTING
+# ADVANCED OPTIMIZATION SETTINGS
 # ======================
+# Advanced VDI optimization parameters
 
-# Debug mode (enables additional logging)
-DebugMode=false
+# Services to disable for VDI performance
+DisableWindowsUpdate=true
+DisableDefender=false
+DisableSuperfetch=true
+DisableWindowsSearch=false
 
-# Skip certain validations (for troubleshooting only)
-SkipPrerequisiteChecks=false
-SkipConnectivityTests=true
-SkipExistingInstallationChecks=true
+# Registry optimizations
+OptimizeVDIRegistry=true
+DisableUAC=false
+ConfigureVisualEffects=true
 
-# Preserve installation files for troubleshooting
-PreserveInstallationFiles=false
+# Network optimizations
+OptimizeNetworkSettings=true
+DisableIPv6=false
+ConfigureTCPSettings=true
 
-# ======================
-# CITRIX OPTIMIZER
-# ======================
-
-# Citrix Optimizer tool configuration
-CitrixOptimizerPath=\\fileserver\software\Citrix\CitrixOptimizer\CtxOptimizerEngine.ps1
-CitrixOptimizerTemplatesPath=\\fileserver\software\Citrix\CitrixOptimizer\Templates
-CitrixOptimizerTemplate=Windows_Server_2019_VDI.xml
-CitrixOptimizerOutputPath=C:\Logs\CitrixOptimizer
-CitrixOptimizerMode=Execute
-
-# ======================
-# CITRIX SERVICES
-# ======================
-
-# Services to disable (comma-separated list)
-# Common services to disable for VDI optimization:
-# CdfSvc - Citrix Diagnostic Facility Service
-# Spooler - Print Spooler (if printing not needed)
-# BITS - Background Intelligent Transfer Service
-# wuauserv - Windows Update Automatic Updates Service
-# Fax - Fax Service
-# TapiSrv - Telephony Service
-# SCardSvr - Smart Card Service (if smart cards not used)
-CitrixServicesToDisable=CdfSvc,Spooler,BITS,wuauserv,Fax,TapiSrv
-
-# ======================================================================
-# END OF CONFIGURATION
-# ======================================================================
+# Storage optimizations
+EnableStorageOptimizations=true
+DisableHibernation=true
+ConfigureSystemRestore

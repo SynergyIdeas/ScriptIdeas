@@ -3225,22 +3225,74 @@ function Add-UberAgent {
 
 function Set-IBMTADDMPermissions {
     [CmdletBinding()]
-    param()
+    param(
+        [Parameter(Mandatory=$false)]
+        [string]$TADDMPath = "C:\IBM\TADDM\nonadmin_scripts\install.bat",
+        
+        [Parameter(Mandatory=$false)]
+        [switch]$CreateGroupIfMissing = $false
+    )
     
     try {
-        Write-Log "Configuring IBM TADDM permissions..."
+        Write-Log "Configuring IBM TADDM installation..."
         
-        # Basic TADDM permission setup
-        $TADDMPath = "C:\Program Files\IBM\TADDM"
-        if (Test-Path $TADDMPath) {
-            $Acl = Get-Acl $TADDMPath
-            $AccessRule = New-Object System.Security.AccessControl.FileSystemAccessRule("Everyone","FullControl","ContainerInherit,ObjectInherit","None","Allow")
-            $Acl.SetAccessRule($AccessRule)
-            Set-Acl -Path $TADDMPath -AclObject $Acl
-            Write-Log "IBM TADDM permissions configured" "SUCCESS"
+        $Results = @{
+            OverallSuccess = $false
+            Skipped = $false
+            InstallBatFound = $false
+            InstallBatExecuted = $false
+            PermissionsConfigured = $false
+            Error = $null
         }
         
-        return $true
+        # Use the provided TADDMPath or default location
+        $LocalInstallBat = if ([string]::IsNullOrEmpty($TADDMPath)) { "C:\IBM\TADDM\nonadmin_scripts\install.bat" } else { $TADDMPath }
+        
+        if (Test-Path $LocalInstallBat) {
+            Write-Log "Found local TADDM install.bat: $LocalInstallBat" "SUCCESS"
+            $Results.InstallBatFound = $true
+            
+            # Execute the install.bat
+            Write-Log "Executing TADDM install.bat for non-administrator configuration..."
+            try {
+                $InstallProcess = Start-Process -FilePath $LocalInstallBat -Wait -PassThru -WorkingDirectory "C:\IBM\TADDM\nonadmin_scripts"
+                
+                if ($InstallProcess.ExitCode -eq 0) {
+                    Write-Log "TADDM install.bat executed successfully" "SUCCESS"
+                    $Results.InstallBatExecuted = $true
+                    $Results.OverallSuccess = $true
+                } else {
+                    Write-Log "TADDM install.bat failed with exit code: $($InstallProcess.ExitCode)" "ERROR"
+                    $Results.Error = "Install.bat failed with exit code: $($InstallProcess.ExitCode)"
+                }
+            }
+            catch {
+                Write-Log "Failed to execute TADDM install.bat: $($_.Exception.Message)" "ERROR"
+                $Results.Error = "Failed to execute install.bat: $($_.Exception.Message)"
+            }
+        }
+        else {
+            Write-Log "Local TADDM install.bat not found at: $LocalInstallBat" "WARN"
+            
+            # Fallback to basic permission setup if install.bat not found
+            $TADDMInstallPath = "C:\Program Files\IBM\TADDM"
+            if (Test-Path $TADDMInstallPath) {
+                Write-Log "Configuring basic TADDM permissions as fallback..."
+                $Acl = Get-Acl $TADDMInstallPath
+                $AccessRule = New-Object System.Security.AccessControl.FileSystemAccessRule("Everyone","FullControl","ContainerInherit,ObjectInherit","None","Allow")
+                $Acl.SetAccessRule($AccessRule)
+                Set-Acl -Path $TADDMInstallPath -AclObject $Acl
+                Write-Log "Basic TADDM permissions configured" "SUCCESS"
+                $Results.PermissionsConfigured = $true
+                $Results.OverallSuccess = $true
+            } else {
+                Write-Log "TADDM installation not found - skipping configuration" "INFO"
+                $Results.Skipped = $true
+                $Results.OverallSuccess = $true
+            }
+        }
+        
+        return $Results
     }
     catch {
         Write-Log "Failed to configure IBM TADDM permissions: $($_.Exception.Message)" "ERROR"
