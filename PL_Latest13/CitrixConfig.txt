@@ -46,7 +46,6 @@ PVSISOPath=%LocalInstallPath%\PVS.iso
 
 WEMInstallerSourcePath=%NetworkSourcePath%\installers\WEM\Citrix_Workspace_Environment_Management_Agent_2402.msi
 WEMInstallerPath=%LocalInstallPath%\WEMAgent.msi
-WEMPath=
 
 # ======================
 # UBERAGENT INSTALLATION
