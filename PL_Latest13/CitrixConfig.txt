@@ -23,45 +23,66 @@ NetworkSourcePath=\\fileserver\citrix
 # Local installation directory (must be defined before use in other variables)
 LocalInstallPath=C:\Temp
 
-# VDA Installation Source
+# ======================
+# VDA INSTALLATION
+# ======================
+# Citrix Virtual Desktop Agent configuration
+
 VDAISOSourcePath=%NetworkSourcePath%\installers\VDA\VDAServerSetup_2402.iso
 VDAISOPath=%LocalInstallPath%\VDA.iso
 
-# PVS Target Device Installation Source (leave empty to skip)
+# ======================
+# PVS TARGET DEVICE INSTALLATION
+# ======================
+# Provisioning Services Target Device configuration
+
 PVSISOSourcePath=%NetworkSourcePath%\installers\PVS\PVS_Target_2402.iso
 PVSISOPath=%LocalInstallPath%\PVS.iso
 
-# WEM Agent Installation (leave empty to skip)
+# ======================
+# WEM AGENT INSTALLATION
+# ======================
+# Workspace Environment Management Agent configuration
+
 WEMInstallerSourcePath=%NetworkSourcePath%\installers\WEM\Citrix_Workspace_Environment_Management_Agent_2402.msi
 WEMInstallerPath=%LocalInstallPath%\WEMAgent.msi
+WEMPath=
 
-# UberAgent Installation (leave empty to skip)
+# ======================
+# UBERAGENT INSTALLATION
+# ======================
+# UberAgent monitoring and analytics configuration
+
 UberAgentInstallerSourcePath=%NetworkSourcePath%\installers\UberAgent\\uberAgent_7.0.0.msi
 UberAgentInstallerPath=%LocalInstallPath%\UberAgent.msi
+UberAgentPath=
 
 # UberAgent Template and Configuration Files
 UberAgentTemplatesPath=%NetworkSourcePath%\UberAgent\Templates
 UberAgentTemplatesSourcePath=%NetworkSourcePath%\UberAgent\Templates
 UberAgentTemplatesLocalPath=C:\Program Files\vast limits\\uberAgent\config\templates
+
 UberAgentConfigPath=%NetworkSourcePath%\UberAgent\Config
 UberAgentConfigSourcePath=%NetworkSourcePath%\UberAgent\uberagent.conf
-UberAgentConfigLocalPath=C:\Program Files\vast limits\uberAgent\config\\uberagent.conf
+UberAgentConfigLocalPath=C:\Program Files\vast limits\\uberAgent\config\\uberagent.conf
+
 UberAgentLicensePath=%NetworkSourcePath%\UberAgent\License
-UberAgentLicenseSourcePath=%NetworkSourcePath%\UberAgent\uberagent.lic
-UberAgentLicenseLocalPath=C:\Program Files\vast limits\\uberAgent\config\\uberagent.lic
+UberAgentLicenseSourcePath=%NetworkSourcePath%\UberAgent\\uberagent.lic
+UberAgentLicenseLocalPath=C:\Program Files\vast limits\uberAgent\config\uberagent.lic
 
 # UberAgent Post-Installation Configuration
 UberAgentOutputDirectory=D:\Logs\\uberAgent\%UberAgentOutputQueueName%
 UberAgentOutputQueueName=Output Queue
 UberAgentServiceName=uberAgentsvc
-UberAgentRegistryPath=HKLM:\Software\vast limits\uberAgent
+UberAgentRegistryPath=HKLM:\Software\vast limits\\uberAgent
 UberAgentTempLogPattern=uberagent*.log
 
-# IBM TADDM Installation (local install.bat execution)
-TADDMPath=C:\IBM\TADDM\nonadmin_scripts\install.bat
+# ======================
+# IBM TADDM INSTALLATION
+# ======================
+# Application Dependency Discovery Manager configuration
 
-# Stage 2 Script Network Path (for copying to LocalInstallPath)
-Stage2ScriptNetworkPath=%NetworkSourcePath%\scripts\citrix_stage2_script.ps1
+TADDMPath=C:\IBM\TADDM\nonadmin_scripts\install.bat
 
 # ======================
 # STARTUP/SHUTDOWN SCRIPTS
@@ -81,6 +102,9 @@ ShutdownScriptsSourceWin2022=%NetworkSourcePath%\scripts\shutdown\win2022
 StartupScriptsDestination=C:\Windows\System32\GroupPolicy\Machine\Scripts\Startup
 ShutdownScriptsDestination=C:\Windows\System32\GroupPolicy\Machine\Scripts\Shutdown
 
+# Stage 2 Script Network Path (for copying to LocalInstallPath)
+Stage2ScriptNetworkPath=%NetworkSourcePath%\scripts\citrix_stage2_script.ps1
+
 # ======================
 # CITRIX OPTIMIZER CONFIGURATION
 # ======================
@@ -90,9 +114,11 @@ CitrixOptimizerPath=%NetworkSourcePath%\tools\CitrixOptimizer\CitrixOptimizer.ex
 CitrixOptimizerTemplatesPath=%NetworkSourcePath%\tools\CitrixOptimizer\Templates
 CitrixOptimizerOutputPath=%LocalInstallPath%\CitrixOptimizer_Results
 CitrixOptimizerTemplate=Windows_Server_2019_VDI.xml
+CitrixOptimizerMode=Execute
+CitrixServicesToDisable=CdfSvc,Spooler,BITS,wuauserv
 
 # ======================
-# INSTALLATION CONTROL FLAGS
+# COMPONENT INSTALLATION CONTROL
 # ======================
 # Enable/disable specific installation components
 
@@ -101,11 +127,6 @@ InstallPVS=true
 InstallWEM=false
 InstallUberAgent=false
 InstallTADDM=false
-
-# System optimization settings
-EnableVDIOptimizations=true
-DisableWindowsServices=true
-ConfigureEventLogRedirection=true
 
 # ======================
 # SYSTEM CONFIGURATION
@@ -121,10 +142,6 @@ RedirectUserProfilesToCache=true
 # CD/DVD drive relocation (automatically moved to Y: for VDI compatibility)
 CDDVMTargetDrive=Y
 
-# DNS configuration
-DNSSuffix=domain.local
-ConfigureDNSSuffix=true
-
 # Pagefile configuration
 PagefileSizeGB=8
 PagefileLocation=D:\pagefile.sys
@@ -132,12 +149,20 @@ PagefileLocation=D:\pagefile.sys
 # ======================
 # DOMAIN CONFIGURATION
 # ======================
-# Domain join configuration (leave empty to skip domain join)
+# Domain join configuration
 
 DomainName=domain.local
-DomainJoinUser=
-DomainJoinPassword=
+OrganizationalUnit=OU=VDI,DC=domain,DC=local
 JoinDomain=false
+
+# DNS configuration
+DNSSuffix=domain.local
+ConfigureDNSSuffix=true
+PrimaryDNSSuffix=domain.local
+DNSSuffixSearchList=domain.local
+AppendPrimarySuffixes=true
+AppendParentSuffixes=true
+RegisterThisConnectionsAddress=true
 
 # ======================
 # VALIDATION AND ERROR HANDLING
@@ -155,9 +180,14 @@ LogLevel=Detailed
 ArchiveOldLogs=true
 
 # ======================
-# ADVANCED OPTIMIZATION SETTINGS
+# VDI OPTIMIZATION SETTINGS
 # ======================
 # Advanced VDI optimization parameters
+
+# System optimization settings
+EnableVDIOptimizations=true
+DisableWindowsServices=true
+ConfigureEventLogRedirection=true
 
 # Services to disable for VDI performance
 DisableWindowsUpdate=true
@@ -178,4 +208,4 @@ ConfigureTCPSettings=true
 # Storage optimizations
 EnableStorageOptimizations=true
 DisableHibernation=true
-ConfigureSystemRestore
+ConfigureSystemRestore=true

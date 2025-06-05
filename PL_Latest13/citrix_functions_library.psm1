@@ -3304,13 +3304,22 @@ function Add-Domain {
     [CmdletBinding()]
     param(
         [string]$DomainName,
-        [PSCredential]$Credential
+        [PSCredential]$Credential,
+        [string]$ConfigFilePath = "$PSScriptRoot\CitrixConfig.txt"
     )
     
     try {
-        Write-Log "Joining domain: $DomainName..."
+        # Get OU configuration if available
+        $OrganizationalUnit = Get-ConfigValue -Key "OrganizationalUnit" -DefaultValue "" -ConfigFile $ConfigFilePath
         
-        Add-Computer -DomainName $DomainName -Credential $Credential -Force
+        if (![string]::IsNullOrWhiteSpace($OrganizationalUnit)) {
+            Write-Log "Joining domain: $DomainName with OU: $OrganizationalUnit"
+            Add-Computer -DomainName $DomainName -OUPath $OrganizationalUnit -Credential $Credential -Force
+        } else {
+            Write-Log "Joining domain: $DomainName (using default computer container)"
+            Add-Computer -DomainName $DomainName -Credential $Credential -Force
+        }
+        
         Write-Log "Domain join completed successfully" "SUCCESS"
         return $true
     }
@@ -4258,6 +4267,8 @@ function Start-DotNetOptimization {
         }
     }
 }
+
+
 
 # Export module functions
 Export-ModuleMember -Function *

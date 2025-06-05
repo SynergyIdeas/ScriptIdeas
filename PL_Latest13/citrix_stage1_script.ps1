@@ -470,6 +470,188 @@ if (![string]::IsNullOrEmpty($TADDMPath)) {
     }
 }
 
+# Domain resolution validation
+Write-Host "Validating domain configuration..." -ForegroundColor Gray
+
+try {
+    $DomainName = Get-ConfigValue -Key "DomainName" -DefaultValue "" -ConfigFile $ConfigFilePath
+    $ConfigureDNSSuffix = Get-ConfigValue -Key "ConfigureDNSSuffix" -DefaultValue $false -ConfigFile $ConfigFilePath
+    $DNSSuffix = Get-ConfigValue -Key "DNSSuffix" -DefaultValue "" -ConfigFile $ConfigFilePath
+    
+    if (![string]::IsNullOrWhiteSpace($DomainName)) {
+        Write-Host "  Testing domain resolution for: $DomainName" -ForegroundColor Gray
+        
+        # Test DNS configuration
+        try {
+            $DNSServers = Get-DnsClientServerAddress -AddressFamily IPv4 | Where-Object { $_.ServerAddresses.Count -gt 0 }
+            if ($DNSServers) {
+                Write-Host "  DNS servers configured: $($DNSServers.ServerAddresses -join ', ')" -ForegroundColor Green
+            } else {
+                $ValidationErrors += "No DNS servers configured - required for domain operations"
+                Write-Host "  DNS servers: NOT CONFIGURED" -ForegroundColor Red
+            }
+        }
+        catch {
+            $ValidationWarnings += "Failed to check DNS configuration: $($_.Exception.Message)"
+        }
+        
+        # Test domain name resolution
+        try {
+            $DomainResolution = Resolve-DnsName -Name $DomainName -Type A -ErrorAction Stop
+            if ($DomainResolution) {
+                Write-Host "  Domain resolved to: $($DomainResolution.IPAddress -join ', ')" -ForegroundColor Green
+                
+                # Test domain controller discovery
+                try {
+                    $DCRecords = Resolve-DnsName -Name "_ldap._tcp.dc._msdcs.$DomainName" -Type SRV -ErrorAction SilentlyContinue
+                    if ($DCRecords) {
+                        Write-Host "  Domain controllers found: $($DCRecords.NameTarget.Count)" -ForegroundColor Green
+                        
+                        # Test connectivity to first domain controller
+                        $FirstDC = $DCRecords.NameTarget | Select-Object -First 1
+                        Write-Host "  Testing connectivity to: $FirstDC" -ForegroundColor Gray
+                        
+                        # Test LDAP port (389)
+                        try {
+                            $LDAPTest = Test-NetConnection -ComputerName $FirstDC -Port 389 -WarningAction SilentlyContinue -ErrorAction Stop
+                            if ($LDAPTest.TcpTestSucceeded) {
+                                Write-Host "    LDAP (389): ACCESSIBLE" -ForegroundColor Green
+                            } else {
+                                $ValidationWarnings += "LDAP port 389 not accessible on $FirstDC"
+                                Write-Host "    LDAP (389): NOT ACCESSIBLE" -ForegroundColor Yellow
+                            }
+                        }
+                        catch {
+                            $ValidationWarnings += "Could not test LDAP connectivity to $FirstDC"
+                        }
+                        
+                        # Test Kerberos port (88)
+                        try {
+                            $KerberosTest = Test-NetConnection -ComputerName $FirstDC -Port 88 -WarningAction SilentlyContinue -ErrorAction Stop
+                            if ($KerberosTest.TcpTestSucceeded) {
+                                Write-Host "    Kerberos (88): ACCESSIBLE" -ForegroundColor Green
+                            } else {
+                                $ValidationWarnings += "Kerberos port 88 not accessible on $FirstDC"
+                                Write-Host "    Kerberos (88): NOT ACCESSIBLE" -ForegroundColor Yellow
+                            }
+                        }
+                        catch {
+                            $ValidationWarnings += "Could not test Kerberos connectivity to $FirstDC"
+                        }
+                        
+                        # Check if domain join is enabled in configuration
+                        $JoinDomain = Get-ConfigValue -Key "JoinDomain" -DefaultValue $false -ConfigFile $ConfigFilePath
+                        if ($JoinDomain) {
+                            Write-Host "  Domain join enabled - testing additional ports..." -ForegroundColor Gray
+                            
+                            # Domain join requires additional ports beyond basic LDAP/Kerberos
+                            $DomainJoinPorts = @(
+                                @{ Port = 53; Name = "DNS"; Description = "Required for name resolution" },
+                                @{ Port = 135; Name = "RPC Endpoint"; Description = "Required for RPC communication" },
+                                @{ Port = 445; Name = "SMB"; Description = "Required for SYSVOL access" },
+                                @{ Port = 464; Name = "Kerberos Password"; Description = "Required for password changes" },
+                                @{ Port = 636; Name = "LDAPS"; Description = "Required for secure LDAP" },
+                                @{ Port = 3268; Name = "Global Catalog"; Description = "Required for global catalog queries" }
+                            )
+                            
+                            $DomainJoinPortsAccessible = 0
+                            $TotalDomainJoinPorts = $DomainJoinPorts.Count
+                            
+                            foreach ($PortTest in $DomainJoinPorts) {
+                                try {
+                                    $ConnTest = Test-NetConnection -ComputerName $FirstDC -Port $PortTest.Port -WarningAction SilentlyContinue -ErrorAction Stop
+                                    if ($ConnTest.TcpTestSucceeded) {
+                                        Write-Host "    $($PortTest.Name) ($($PortTest.Port)): ACCESSIBLE" -ForegroundColor Green
+                                        $DomainJoinPortsAccessible++
+                                    } else {
+                                        Write-Host "    $($PortTest.Name) ($($PortTest.Port)): NOT ACCESSIBLE" -ForegroundColor Yellow
+                                        $ValidationWarnings += "$($PortTest.Name) port $($PortTest.Port) not accessible - $($PortTest.Description)"
+                                    }
+                                }
+                                catch {
+                                    Write-Host "    $($PortTest.Name) ($($PortTest.Port)): ERROR" -ForegroundColor Red
+                                    $ValidationWarnings += "Could not test $($PortTest.Name) port $($PortTest.Port) on $FirstDC"
+                                }
+                            }
+                            
+                            # Evaluate domain join readiness
+                            $DomainJoinReadiness = [math]::Round(($DomainJoinPortsAccessible / $TotalDomainJoinPorts) * 100, 1)
+                            Write-Host "  Domain join readiness: $DomainJoinPortsAccessible/$TotalDomainJoinPorts ports ($DomainJoinReadiness%)" -ForegroundColor $(if ($DomainJoinReadiness -ge 80) { "Green" } elseif ($DomainJoinReadiness -ge 60) { "Yellow" } else { "Red" })
+                            
+                            if ($DomainJoinReadiness -lt 60) {
+                                $ValidationErrors += "Domain join readiness below 60% - multiple required ports not accessible"
+                            } elseif ($DomainJoinReadiness -lt 80) {
+                                $ValidationWarnings += "Domain join readiness below 80% - some optional ports not accessible"
+                            }
+                            
+                            # Test DNS dynamic updates capability
+                            Write-Host "  Testing DNS dynamic update capability..." -ForegroundColor Gray
+                            try {
+                                # Check if the computer can register DNS records
+                                $DNSRegistration = Get-DnsClientServerAddress | Where-Object { $_.ServerAddresses -contains $DomainResolution.IPAddress[0] }
+                                if ($DNSRegistration) {
+                                    Write-Host "    DNS registration: CAPABLE" -ForegroundColor Green
+                                } else {
+                                    Write-Host "    DNS registration: UNCERTAIN" -ForegroundColor Yellow
+                                    $ValidationWarnings += "DNS registration capability uncertain - verify dynamic DNS is enabled"
+                                }
+                            }
+                            catch {
+                                $ValidationWarnings += "Could not verify DNS dynamic update capability"
+                            }
+                            
+                            # Check time synchronization
+                            Write-Host "  Testing time synchronization..." -ForegroundColor Gray
+                            try {
+                                $w32tm = w32tm /query /status 2>$null
+                                if ($LASTEXITCODE -eq 0) {
+                                    Write-Host "    Time service: RUNNING" -ForegroundColor Green
+                                } else {
+                                    Write-Host "    Time service: NOT RUNNING" -ForegroundColor Yellow
+                                    $ValidationWarnings += "Windows Time service not running - required for Kerberos authentication"
+                                }
+                            }
+                            catch {
+                                $ValidationWarnings += "Could not verify time synchronization status"
+                            }
+                            
+                            # Check domain join configuration
+                            Write-Host "  Domain join: ENABLED (credentials will be prompted during join)" -ForegroundColor Green
+                        } else {
+                            Write-Host "  Domain join: DISABLED in configuration" -ForegroundColor Gray
+                        }
+                    } else {
+                        $ValidationWarnings += "No domain controllers found via DNS SRV records for $DomainName"
+                        Write-Host "  Domain controllers: NOT FOUND via SRV records" -ForegroundColor Yellow
+                    }
+                }
+                catch {
+                    $ValidationWarnings += "Failed to discover domain controllers: $($_.Exception.Message)"
+                }
+            }
+        }
+        catch {
+            $ValidationErrors += "Failed to resolve domain '$DomainName': $($_.Exception.Message)"
+            Write-Host "  Domain resolution: FAILED - $($_.Exception.Message)" -ForegroundColor Red
+        }
+        
+        # Validate DNS suffix configuration
+        if ($ConfigureDNSSuffix) {
+            if ($DNSSuffix -eq $DomainName) {
+                Write-Host "  DNS suffix configuration: VALID (matches domain)" -ForegroundColor Green
+            } else {
+                $ValidationWarnings += "DNS suffix '$DNSSuffix' does not match domain name '$DomainName'"
+                Write-Host "  DNS suffix: MISMATCH (suffix: $DNSSuffix, domain: $DomainName)" -ForegroundColor Yellow
+            }
+        }
+    } else {
+        Write-Host "  Domain validation: SKIPPED (no domain configured)" -ForegroundColor Gray
+    }
+}
+catch {
+    $ValidationWarnings += "Domain validation failed: $($_.Exception.Message)"
+}
+
 # System requirements validation
 Write-Host "Validating system requirements..." -ForegroundColor Gray
 
