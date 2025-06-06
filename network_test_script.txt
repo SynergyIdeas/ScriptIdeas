@@ -1,5 +1,5 @@
 # Network Connection Test Script
-# Tests multiple hosts on multiple ports
+# Tests different hosts on different ports
 
 # Define test groups - different hosts for different ports
 $testGroups = @{
@@ -47,7 +47,7 @@ foreach ($port in $testGroups.Keys) {
         try {
             $test = Test-NetConnection -ComputerName $hostname -Port $port -WarningAction SilentlyContinue
             $results += [PSCustomObject]@{
-                Host = $hostname
+                Hostname = $hostname
                 Port = $port
                 Status = if ($test.TcpTestSucceeded) { "Success" } else { "Failed" }
                 ResponseTime = $test.PingReplyDetails.RoundtripTime
@@ -55,7 +55,7 @@ foreach ($port in $testGroups.Keys) {
         }
         catch {
             $results += [PSCustomObject]@{
-                Host = $hostname
+                Hostname = $hostname
                 Port = $port
                 Status = "Error"
                 ResponseTime = $null
