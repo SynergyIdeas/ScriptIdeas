@@ -1,0 +1,70 @@
+# Network Connection Test Script
+# Tests multiple hosts on multiple ports
+
+# Define test groups - different hosts for different ports
+$testGroups = @{
+    443 = @("server1.company.com", "server2.company.com", "server3.company.com", "server4.company.com")
+    80  = @("web1.company.com", "web2.company.com", "web3.company.com")
+}
+
+# Function to test specific host-port combinations
+function Test-NetworkConnections {
+    param($TestGroups)
+    
+    Write-Host "Testing network connections..." -ForegroundColor Yellow
+    Write-Host "=" * 60
+    
+    foreach ($port in $TestGroups.Keys) {
+        Write-Host "`nTesting Port $port" -ForegroundColor Magenta
+        Write-Host "=" * 30
+        
+        foreach ($host in $TestGroups[$port]) {
+            Write-Host "Testing $host on port $port..." -NoNewline
+            
+            try {
+                $result = Test-NetConnection -ComputerName $host -Port $port -WarningAction SilentlyContinue
+                
+                if ($result.TcpTestSucceeded) {
+                    Write-Host " SUCCESS" -ForegroundColor Green
+                } else {
+                    Write-Host " FAILED" -ForegroundColor Red
+                }
+            }
+            catch {
+                Write-Host " ERROR - $($_.Exception.Message)" -ForegroundColor Red
+            }
+        }
+    }
+}
+
+# Run the test
+Test-NetworkConnections -TestGroups $testGroups
+
+# Optional: Export results to CSV
+$results = @()
+foreach ($port in $testGroups.Keys) {
+    foreach ($host in $testGroups[$port]) {
+        try {
+            $test = Test-NetConnection -ComputerName $host -Port $port -WarningAction SilentlyContinue
+            $results += [PSCustomObject]@{
+                Host = $host
+                Port = $port
+                Status = if ($test.TcpTestSucceeded) { "Success" } else { "Failed" }
+                ResponseTime = $test.PingReplyDetails.RoundtripTime
+            }
+        }
+        catch {
+            $results += [PSCustomObject]@{
+                Host = $host
+                Port = $port
+                Status = "Error"
+                ResponseTime = $null
+            }
+        }
+    }
+}
+
+# Uncomment the line below to export results to CSV
+# $results | Export-Csv -Path "network_test_results.csv" -NoTypeInformation
+
+Write-Host "`nTest completed!" -ForegroundColor Yellow
