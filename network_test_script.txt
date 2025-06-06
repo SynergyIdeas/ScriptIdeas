@@ -18,11 +18,11 @@ function Test-NetworkConnections {
         Write-Host "`nTesting Port $port" -ForegroundColor Magenta
         Write-Host "=" * 30
         
-        foreach ($host in $TestGroups[$port]) {
-            Write-Host "Testing $host on port $port..." -NoNewline
+        foreach ($hostname in $TestGroups[$port]) {
+            Write-Host "Testing $hostname on port $port..." -NoNewline
             
             try {
-                $result = Test-NetConnection -ComputerName $host -Port $port -WarningAction SilentlyContinue
+                $result = Test-NetConnection -ComputerName $hostname -Port $port -WarningAction SilentlyContinue
                 
                 if ($result.TcpTestSucceeded) {
                     Write-Host " SUCCESS" -ForegroundColor Green
@@ -43,11 +43,11 @@ Test-NetworkConnections -TestGroups $testGroups
 # Optional: Export results to CSV
 $results = @()
 foreach ($port in $testGroups.Keys) {
-    foreach ($host in $testGroups[$port]) {
+    foreach ($hostname in $testGroups[$port]) {
         try {
-            $test = Test-NetConnection -ComputerName $host -Port $port -WarningAction SilentlyContinue
+            $test = Test-NetConnection -ComputerName $hostname -Port $port -WarningAction SilentlyContinue
             $results += [PSCustomObject]@{
-                Host = $host
+                Host = $hostname
                 Port = $port
                 Status = if ($test.TcpTestSucceeded) { "Success" } else { "Failed" }
                 ResponseTime = $test.PingReplyDetails.RoundtripTime
@@ -55,7 +55,7 @@ foreach ($port in $testGroups.Keys) {
         }
         catch {
             $results += [PSCustomObject]@{
-                Host = $host
+                Host = $hostname
                 Port = $port
                 Status = "Error"
                 ResponseTime = $null
