@@ -49,6 +49,55 @@ catch {
     exit 1
 }
 
+# =============================================================================
+# STAGE 2 INITIALIZATION - VIRTUAL CACHE DRIVE MOUNTING
+# =============================================================================
+
+Write-Host "`n" -ForegroundColor Yellow
+Write-Host "STAGE 2 INITIALIZATION: Virtual Cache Drive Check" -ForegroundColor Green -BackgroundColor Black
+Write-Host "=================================================" -ForegroundColor Green
+
+# Check if virtual cache drive was used in Stage 1 and mount if needed
+$UseVirtualCacheDrive = [bool](Get-ConfigValue -Key "UseVirtualCacheDrive" -DefaultValue "false" -ConfigFile $ConfigFilePath)
+
+if ($UseVirtualCacheDrive) {
+    Write-Host "Virtual cache drive enabled - checking mount status..." -ForegroundColor Cyan
+    
+    # Check if D: drive already exists
+    $DDriveExists = Test-Path "D:\"
+    
+    if ($DDriveExists) {
+        Write-Host "D: drive already mounted and accessible" -ForegroundColor Green
+    } else {
+        Write-Host "D: drive not found - attempting to mount virtual cache drive..." -ForegroundColor Yellow
+        
+        try {
+            # Mount the virtual cache drive from Stage 1
+            $VirtualCacheResult = New-VirtualCacheDrive -ConfigFilePath $ConfigFilePath
+            
+            if ($VirtualCacheResult.Success) {
+                Write-Host "SUCCESS: Virtual cache drive mounted!" -ForegroundColor Green
+                Write-Host "Drive: $($VirtualCacheResult.DriveLetter): ($($VirtualCacheResult.DriveInfo.SizeMB) MB)" -ForegroundColor Green
+                Write-Host "VHDX Location: $($VirtualCacheResult.VHDXPath)" -ForegroundColor Gray
+            } else {
+                Write-Host "FAILED: Virtual cache drive mounting failed" -ForegroundColor Red
+                foreach ($Error in $VirtualCacheResult.Errors) {
+                    Write-Host "Error: $Error" -ForegroundColor Red
+                }
+                Write-Host "Stage 2 operations may fail without D: drive access" -ForegroundColor Yellow
+            }
+        }
+        catch {
+            Write-Host "EXCEPTION: Virtual cache drive mounting failed: $($_.Exception.Message)" -ForegroundColor Red
+            Write-Host "Stage 2 operations may fail without D: drive access" -ForegroundColor Yellow
+        }
+    }
+} else {
+    Write-Host "Virtual cache drive disabled - assuming physical D: drive" -ForegroundColor Gray
+}
+
+Write-Host "Stage 2 initialization completed`n" -ForegroundColor Green
+
 try {
     # Initialize logging manually since function may not be available
     try {
@@ -682,23 +731,134 @@ try {
     Write-Host "Final report saved to desktop" -ForegroundColor Gray
     Write-Host ""
     
-
-
-    do {
-        $Response = Read-Host "Have you removed the D: cache drive? (y/n)"
-        if ($Response.ToLower() -eq 'y' -or $Response.ToLower() -eq 'yes') {
-            Write-Host "Cache drive removal confirmed" -ForegroundColor Green
-            Write-Host "Please proceed with Citrix App Layering Platform Layer operations" -ForegroundColor Green
-            break
+    # CACHE DRIVE REDIRECTIONS
+    Write-LogHeader "CACHE DRIVE REDIRECTIONS CONFIGURATION"
+    Write-Log "Configuring all cache drive redirections..."
+    
+    # Event Logs Redirection
+    $RedirectEventLogsToCache = [bool](Get-ConfigValue -Key "RedirectEventLogsToCache" -DefaultValue "true" -ConfigFile $ConfigFilePath)
+    if ($RedirectEventLogsToCache) {
+        Write-Log "Configuring event logs redirection to cache drive..."
+        try {
+            Set-EventLogs
+            Write-Log "Event logs redirection configured successfully" "SUCCESS"
+        } catch {
+            Write-Log "Failed to configure event logs redirection: $($_.Exception.Message)" "ERROR"
         }
-        elseif ($Response.ToLower() -eq 'n' -or $Response.ToLower() -eq 'no') {
-            Write-Host "Please remove the D: cache drive before continuing" -ForegroundColor Yellow
-            Write-Host "Platform Layer finalization cannot proceed with cache drive attached" -ForegroundColor Yellow
+    } else {
+        Write-Log "Event logs redirection skipped - disabled in configuration" "INFO"
+    }
+    
+    # User Profiles Redirection
+    $RedirectUserProfilesToCache = [bool](Get-ConfigValue -Key "RedirectUserProfilesToCache" -DefaultValue "true" -ConfigFile $ConfigFilePath)
+    if ($RedirectUserProfilesToCache) {
+        Write-Log "Configuring user profiles redirection to cache drive..."
+        try {
+            $UserProfileResult = Set-UserProfilesRedirection -CacheDriveLetter "D"
+            if ($UserProfileResult.Success) {
+                Write-Log "User profiles redirection configured successfully" "SUCCESS"
+                Write-Log "New profiles will be created on: $($UserProfileResult.ProfilesPath)" "SUCCESS"
+            } else {
+                Write-Log "Failed to configure user profiles redirection: $($UserProfileResult.Error)" "ERROR"
+            }
+        } catch {
+            Write-Log "Failed to configure user profiles redirection: $($_.Exception.Message)" "ERROR"
+        }
+    } else {
+        Write-Log "User profiles redirection skipped - disabled in configuration" "INFO"
+    }
+    
+    # FINAL STEP: Configure pagefile on D: drive
+    Write-LogHeader "FINAL OPTIMIZATION - PAGEFILE CONFIGURATION"
+    Write-Log "Configuring pagefile on D: drive as the final optimization step..."
+    
+    # Read pagefile configuration from saved install config or use default
+    $PagefileSizeGB = 8  # Default value
+    try {
+        $ConfigFilePath = "$PSScriptRoot\CitrixConfig.txt"
+        if (Test-Path $ConfigFilePath) {
+            $PagefileSizeGB = [int](Get-ConfigValue -Key "PagefileSizeGB" -DefaultValue "8" -ConfigFile $ConfigFilePath)
+        }
+    }
+    catch {
+        Write-Log "Could not read pagefile size from configuration, using default 8GB" "WARN"
+    }
+    
+    # Check boolean flags for pagefile configuration
+    $ConfigurePagefile = [bool](Get-ConfigValue -Key "ConfigurePagefile" -DefaultValue "true" -ConfigFile $ConfigFilePath)
+    $RedirectPagefileToCache = [bool](Get-ConfigValue -Key "RedirectPagefileToCache" -DefaultValue "true" -ConfigFile $ConfigFilePath)
+    
+    if ($ConfigurePagefile -and $RedirectPagefileToCache) {
+        Write-Log "Configuring pagefile with cache drive redirection..."
+        $PagefileResult = Set-PagefileConfiguration -PagefileSizeGB $PagefileSizeGB -CacheDriveLetter "D"
+    } elseif ($ConfigurePagefile) {
+        Write-Log "Configuring pagefile without cache redirection..."
+        $PagefileResult = Set-PagefileConfiguration -PagefileSizeGB $PagefileSizeGB
+    } else {
+        Write-Log "Pagefile configuration skipped - disabled in configuration"
+        $PagefileResult = @{ Success = $true; Skipped = $true }
+    }
+    
+    if ($ConfigurePagefile) {
+        
+        if ($PagefileResult.Success) {
+            Write-Log "Pagefile configuration completed successfully" "SUCCESS"
+            Write-Log "Pagefile location: $($PagefileResult.Location)" "SUCCESS"
+            Write-Log "Pagefile size: $($PagefileResult.SizeGB) GB ($($PagefileResult.SizeMB) MB)" "SUCCESS"
+            Write-Host ""
+            Write-Host "PAGEFILE CONFIGURED ON D: DRIVE" -ForegroundColor Green
+            Write-Host "Location: $($PagefileResult.Location)" -ForegroundColor Cyan
+            Write-Host "Size: $($PagefileResult.SizeGB) GB (Fixed)" -ForegroundColor Cyan
         }
         else {
-            Write-Host "Please enter 'y' for yes or 'n' for no" -ForegroundColor Yellow
+            Write-Log "Pagefile configuration failed: $($PagefileResult.Error)" "ERROR"
+            Write-Host "WARNING: Pagefile configuration failed" -ForegroundColor Yellow
         }
-    } while ($true)
+    }
+    else {
+        Write-Log "Pagefile configuration skipped - disabled in configuration" "INFO"
+        Write-Host "Pagefile configuration skipped per configuration" -ForegroundColor Yellow
+    }
+    
+    Write-Host ""
+    Write-Host "All optimizations completed. Ready for cache drive removal." -ForegroundColor Green
+    Write-Host ""
+
+    # Check if virtual cache drive was used
+    $UseVirtualCacheDrive = [bool](Get-ConfigValue -Key "UseVirtualCacheDrive" -DefaultValue "false" -ConfigFile $ConfigFilePath)
+    
+    if ($UseVirtualCacheDrive) {
+        Write-Host "Automatic virtual cache drive removal..." -ForegroundColor Cyan
+        $VirtualCacheRemovalResult = Remove-VirtualCacheDrive -ConfigFilePath $ConfigFilePath
+        
+        if ($VirtualCacheRemovalResult.Success) {
+            Write-Host "Virtual cache drive removed successfully" -ForegroundColor Green
+            Write-Host "VHDX file dismounted and deleted automatically" -ForegroundColor Green
+            Write-Host "Ready for Citrix App Layering Platform Layer operations" -ForegroundColor Green
+        } else {
+            Write-Host "Virtual cache drive removal encountered issues:" -ForegroundColor Yellow
+            foreach ($Error in $VirtualCacheRemovalResult.Errors) {
+                Write-Host "  - $Error" -ForegroundColor Red
+            }
+            Write-Host "Please manually remove the virtual cache drive before continuing" -ForegroundColor Yellow
+        }
+    } else {
+        do {
+            $Response = Read-Host "Have you removed the D: cache drive? (y/n)"
+            if ($Response.ToLower() -eq 'y' -or $Response.ToLower() -eq 'yes') {
+                Write-Host "Cache drive removal confirmed" -ForegroundColor Green
+                Write-Host "Please proceed with Citrix App Layering Platform Layer operations" -ForegroundColor Green
+                break
+            }
+            elseif ($Response.ToLower() -eq 'n' -or $Response.ToLower() -eq 'no') {
+                Write-Host "Please remove the D: cache drive before continuing" -ForegroundColor Yellow
+                Write-Host "Platform Layer finalization cannot proceed with cache drive attached" -ForegroundColor Yellow
+            }
+            else {
+                Write-Host "Please enter 'y' for yes or 'n' for no" -ForegroundColor Yellow
+            }
+        } while ($true)
+    }
     
     Write-Host ""
     Write-Host "Press any key to exit..." -ForegroundColor Gray

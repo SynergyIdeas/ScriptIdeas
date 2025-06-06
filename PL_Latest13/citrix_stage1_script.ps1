@@ -37,9 +37,10 @@ $Stage2ScriptPath = "$PSScriptRoot\citrix_stage2_script.ps1"   # Stage 2 script 
 $ConfigFilePath = "$PSScriptRoot\CitrixConfig.txt"           # Configuration file path
 
 # Enhanced validation settings
-$ValidationMode = "Enhanced"                              # Standard, Enhanced, or Strict
-$ContinueOnWarnings = $true                              # Continue installation despite warnings
-$CreateBackups = $true                                   # Create configuration backups
+# Read validation settings from configuration
+$ValidationMode = Get-ConfigValue -Key "ValidationMode" -DefaultValue "Enhanced" -ConfigFile $ConfigFilePath
+$ContinueOnWarnings = [bool](Get-ConfigValue -Key "ContinueOnWarnings" -DefaultValue "true" -ConfigFile $ConfigFilePath)
+
 
 #endregion
 
@@ -155,7 +156,46 @@ catch {
     $TADDMPath = ""
 
     $LogPath = Get-DesktopLogPath
-    $PagefileSizeGB = 8
+    $PagefileSizeGB = [int](Get-ConfigValue -Key "PagefileSizeGB" -DefaultValue 8)
+}
+
+# =============================================================================
+# VIRTUAL CACHE DRIVE CREATION (BEFORE VALIDATION)
+# =============================================================================
+
+# Check if virtual cache drive should be created BEFORE any validation
+$ConfigureCacheDrive = [bool](Get-ConfigValue -Key "ConfigureCacheDrive" -DefaultValue "true")
+$UseVirtualCacheDrive = [bool](Get-ConfigValue -Key "UseVirtualCacheDrive" -DefaultValue "false")
+
+if ($ConfigureCacheDrive -and $UseVirtualCacheDrive) {
+    Write-Host "`nVIRTUAL CACHE DRIVE CREATION" -ForegroundColor Green -BackgroundColor Black
+    Write-Host "=============================" -ForegroundColor Green
+    Write-Host "Creating virtual cache drive before validation..." -ForegroundColor Cyan
+    
+    try {
+        # Import functions if not already loaded
+        if (-not (Get-Command "New-VirtualCacheDrive" -ErrorAction SilentlyContinue)) {
+            Import-Module ".\citrix_functions_library.psm1" -Force -DisableNameChecking
+        }
+        
+        $VirtualCacheResult = New-VirtualCacheDrive -ConfigFilePath ".\CitrixConfig.txt"
+        
+        if ($VirtualCacheResult.Success) {
+            Write-Host "SUCCESS: Virtual cache drive created!" -ForegroundColor Green
+            Write-Host "Drive: $($VirtualCacheResult.DriveLetter): ($($VirtualCacheResult.DriveInfo.SizeMB) MB)" -ForegroundColor Green
+            Write-Host "VHDX Location: $($VirtualCacheResult.VHDXPath)" -ForegroundColor Gray
+        } else {
+            Write-Host "FAILED: Virtual cache drive creation failed" -ForegroundColor Red
+            foreach ($Error in $VirtualCacheResult.Errors) {
+                Write-Host "Error: $Error" -ForegroundColor Red
+            }
+            Write-Host "Continuing with physical drive validation..." -ForegroundColor Yellow
+        }
+    }
+    catch {
+        Write-Host "EXCEPTION: Virtual cache drive creation failed: $($_.Exception.Message)" -ForegroundColor Red
+        Write-Host "Continuing with physical drive validation..." -ForegroundColor Yellow
+    }
 }
 
 # =============================================================================
@@ -797,7 +837,7 @@ try {
     Write-Log "PowerShell Version: $($PSVersionTable.PSVersion)"
     Write-Log "Validation Mode: $ValidationMode"
     Write-Log "Continue on Warnings: $ContinueOnWarnings"
-    Write-Log "Create Backups: $CreateBackups"
+
     
     if ($ValidationWarnings.Count -gt 0) {
         Write-Log "Installation proceeding with $($ValidationWarnings.Count) warning(s)" "WARN"
@@ -882,23 +922,94 @@ try {
     # Continue with installation using files in temp directory
     $CopySuccess = $CopyResults.Success
     
+    # IMMEDIATE VIRTUAL CACHE DRIVE CREATION (before any validation)
+    $ConfigureCacheDrive = [bool](Get-ConfigValue -Key "ConfigureCacheDrive" -DefaultValue "true")
+    $UseVirtualCacheDrive = [bool](Get-ConfigValue -Key "UseVirtualCacheDrive" -DefaultValue "false" -ConfigFile $ConfigFilePath)
+    
+    if ($ConfigureCacheDrive -and $UseVirtualCacheDrive) {
+        Write-LogHeader "Virtual Cache Drive Creation (Pre-Validation)"
+        Write-Log "UseVirtualCacheDrive setting: $UseVirtualCacheDrive" "INFO"
+        Write-Log "Creating virtual cache drive using VHDX file BEFORE drive validation..." "INFO"
+        Write-Host "DEBUG: About to create virtual cache drive..." -ForegroundColor Magenta
+        
+        $CacheDriveResult = New-VirtualCacheDrive -ConfigFilePath $ConfigFilePath
+        
+        Write-Host "DEBUG: Virtual cache drive result: Success=$($CacheDriveResult.Success)" -ForegroundColor Magenta
+        
+        if ($CacheDriveResult.Success) {
+            Write-Log "Virtual cache drive created successfully" "SUCCESS"
+            Write-Log "Drive: $($CacheDriveResult.DriveLetter): ($($CacheDriveResult.DriveInfo.SizeMB) MB, NTFS)" "SUCCESS"
+            Write-Log "VHDX Location: $($CacheDriveResult.VHDXPath)" "SUCCESS"
+            Write-Host "DEBUG: Virtual cache drive SUCCESS - D: should exist now" -ForegroundColor Green
+            $InstallConfig.InstallationResults.CacheDrive = $CacheDriveResult
+        } else {
+            Write-Log "Virtual cache drive creation failed" "ERROR"
+            Write-Host "DEBUG: Virtual cache drive FAILED" -ForegroundColor Red
+            foreach ($Error in $CacheDriveResult.Errors) {
+                Write-Log "Error: $Error" "ERROR"
+                Write-Host "DEBUG Error: $Error" -ForegroundColor Red
+            }
+            $InstallConfig.InstallationResults.CacheDrive = $CacheDriveResult
+        }
+    } else {
+        Write-Host "DEBUG: Virtual cache drive skipped. ConfigureCacheDrive=$ConfigureCacheDrive, UseVirtualCacheDrive=$UseVirtualCacheDrive" -ForegroundColor Yellow
+    }
+    
     # Basic system validation (VDA installer handles its own prerequisites)
     Write-LogHeader "Basic System Validation"
     Write-Log "VDA installer will handle all component prerequisites automatically" "INFO"
     
     # Enhanced drive configuration initialization (full validation)
-    Write-LogHeader "Enhanced Drive Configuration"
-    Write-Log "Performing comprehensive drive validation..."
+    $RelocateCDDVDDrive = [bool](Get-ConfigValue -Key "RelocateCDDVDDrive" -DefaultValue "true")
     
-    $DriveConfigInit = Start-DriveConfiguration -Interactive $true
-    
-    # Additional drive configuration testing
-    $DriveTestResult = Test-DriveConfiguration
-    if ($DriveTestResult) {
-        Write-Log "Drive configuration test passed" "SUCCESS"
-    }
-    else {
-        Write-Log "Drive configuration test failed - performing additional validation" "WARN"
+    if ($ConfigureCacheDrive -or $RelocateCDDVDDrive) {
+        Write-LogHeader "Enhanced Drive Configuration"
+        
+        # Create cache drive if enabled (skipped if virtual cache drive already created)
+        if ($ConfigureCacheDrive -and -not $UseVirtualCacheDrive) {
+            Write-Log "Creating D: cache drive using remaining disk space..."
+            $CacheDriveResult = New-CacheDrive -DriveLetter "D" -VolumeLabel "Cache" -Interactive $true
+            
+            if ($CacheDriveResult.Success) {
+                Write-Log "Cache drive created successfully using $($CacheDriveResult.Method)" "SUCCESS"
+                Write-Log "Drive: D: ($($CacheDriveResult.DriveInfo.SizeGB) GB, $($CacheDriveResult.DriveInfo.FileSystem))" "SUCCESS"
+                $InstallConfig.InstallationResults.CacheDrive = $CacheDriveResult
+            } else {
+                Write-Log "Cache drive creation failed or requires manual intervention" "WARN"
+                if ($CacheDriveResult.ManualFallbackRequired) {
+                    Write-Log "Manual cache drive creation required - see instructions above" "WARN"
+                }
+                $InstallConfig.InstallationResults.CacheDrive = $CacheDriveResult
+            }
+        } elseif ($ConfigureCacheDrive -and $UseVirtualCacheDrive) {
+            Write-Log "Physical cache drive creation skipped - virtual cache drive already created" "INFO"
+        }
+        
+        # Continue with existing drive configuration only if virtual cache drive wasn't created
+        if (-not $UseVirtualCacheDrive) {
+            Write-Log "Performing comprehensive drive validation..." "INFO"
+            $DriveConfigInit = Start-DriveConfiguration -Interactive $true
+        } elseif ($CacheDriveResult.Success) {
+            Write-Log "Skipping interactive drive configuration - virtual cache drive already created successfully" "INFO"
+            $DriveConfigInit = @{ 
+                Success = $true
+                Method = "Virtual Cache Drive"
+                DriveValidationPassed = $true
+                DDriveExists = $true
+                DDriveAccessible = $true
+            }
+        } else {
+            Write-Log "Virtual cache drive failed - proceeding with standard drive validation..." "WARN"
+            $DriveConfigInit = Start-DriveConfiguration -Interactive $true
+        }
+        
+        # Additional drive configuration testing
+        $DriveTestResult = Test-DriveConfiguration
+        if ($DriveTestResult) {
+            Write-Log "Drive configuration test passed" "SUCCESS"
+        }
+    } else {
+        Write-Log "Drive configuration skipped - disabled in configuration"
     }
     
     if ($DriveConfigInit.DriveValidationPassed) {
@@ -958,7 +1069,7 @@ try {
         PagefileSizeGB = $PagefileSizeGB
         ValidationMode = $ValidationMode
         ContinueOnWarnings = $ContinueOnWarnings
-        CreateBackups = $CreateBackups
+
     }
     
     # Enhanced pre-installation system configuration
@@ -969,20 +1080,51 @@ try {
     
     # Windows Firewall configuration handled by Citrix installer (firewall disabled in environment)
     
-    Write-Log "Disabling NetBIOS over TCP/IP..."
-    Stop-NetBiosOverTCP
+    # Network optimizations (if enabled)
+    $OptimizeNetworkSettings = [bool](Get-ConfigValue -Key "OptimizeNetworkSettings" -DefaultValue "true")
+    if ($OptimizeNetworkSettings) {
+        Write-Log "Disabling NetBIOS over TCP/IP..."
+        Stop-NetBiosOverTCP
+        
+        Write-Log "Disabling network offload parameters for PVS compatibility..."
+        Stop-NetworkOffloadParameters
+        
+        Write-Log "Configuring SMB settings for Citrix environments..."
+        Set-SMBSettings
+    } else {
+        Write-Log "Network optimizations skipped - disabled in configuration"
+    }
     
-    Write-Log "Disabling network offload parameters for PVS compatibility..."
-    Stop-NetworkOffloadParameters
+    # Storage optimizations (if enabled)
+    $EnableStorageOptimizations = [bool](Get-ConfigValue -Key "EnableStorageOptimizations" -DefaultValue "true")
+    if ($EnableStorageOptimizations) {
+        Write-Log "Configuring crash dump to kernel mode..."
+        Set-CrashDumpToKernelMode
+        
+        Write-Log "Removing PasswordAge registry key..."
+        Remove-PasswordAgeRegistryKey
+    } else {
+        Write-Log "Storage optimizations skipped - disabled in configuration"
+    }
     
-    Write-Log "Configuring SMB settings for Citrix environments..."
-    Set-SMBSettings
+    # Apply comprehensive Windows optimizations based on configuration flags
+    Write-LogHeader "WINDOWS SYSTEM OPTIMIZATIONS"
+    $WindowsOptimizationResult = Set-WindowsOptimizations -ConfigFilePath $ConfigFilePath
     
-    Write-Log "Configuring crash dump to kernel mode..."
-    Set-CrashDumpToKernelMode
-    
-    Write-Log "Removing PasswordAge registry key..."
-    Remove-PasswordAgeRegistryKey
+    if ($WindowsOptimizationResult.Success) {
+        Write-Log "Windows optimizations completed successfully" "SUCCESS"
+        Write-Log "Applied $($WindowsOptimizationResult.OptimizationsApplied.Count) optimizations" "SUCCESS"
+        if ($WindowsOptimizationResult.OptimizationsSkipped.Count -gt 0) {
+            Write-Log "Skipped $($WindowsOptimizationResult.OptimizationsSkipped.Count) optimizations per configuration" "INFO"
+        }
+    } else {
+        Write-Log "Windows optimizations completed with some issues" "WARN"
+        if ($WindowsOptimizationResult.Errors.Count -gt 0) {
+            foreach ($Error in $WindowsOptimizationResult.Errors) {
+                Write-Log "Optimization error: $Error" "WARN"
+            }
+        }
+    }
     
     Write-Log "Running Citrix Optimizer..."
     # Citrix Optimizer execution with full tool integration
@@ -1011,33 +1153,48 @@ try {
         $InstallConfig.InstallationResults.CitrixOptimizer = $CitrixOptimizerResult
     }
     
-    Write-Log "Disabling specified Citrix services..."
-    $CitrixServicesResult = Stop-CitrixServices -ConfigFilePath $ConfigFilePath
-    
-    if ($CitrixServicesResult.Success) {
-        Write-Log "Citrix services management completed successfully" "SUCCESS"
-        Write-Log "Disabled services: $($CitrixServicesResult.DisabledServices.Count)" "SUCCESS"
-        Write-Log "Skipped services: $($CitrixServicesResult.SkippedServices.Count)" "INFO"
+    $DisableWindowsServices = [bool](Get-ConfigValue -Key "DisableWindowsServices" -DefaultValue "true")
+    if ($DisableWindowsServices) {
+        Write-Log "Disabling specified Windows services..."
+        $CitrixServicesResult = Stop-CitrixServices -ConfigFilePath $ConfigFilePath
         
-        if ($CitrixServicesResult.FailedServices.Count -gt 0) {
-            Write-Log "Failed to disable $($CitrixServicesResult.FailedServices.Count) services" "WARN"
+        if ($CitrixServicesResult.Success) {
+            Write-Log "Windows services management completed successfully" "SUCCESS"
+            Write-Log "Disabled services: $($CitrixServicesResult.DisabledServices.Count)" "SUCCESS"
+            Write-Log "Skipped services: $($CitrixServicesResult.SkippedServices.Count)" "INFO"
+            
+            if ($CitrixServicesResult.FailedServices.Count -gt 0) {
+                Write-Log "Failed to disable $($CitrixServicesResult.FailedServices.Count) services" "WARN"
+            }
+            
+            $InstallConfig.InstallationResults.CitrixServicesDisabled = $CitrixServicesResult
         }
-        
-        $InstallConfig.InstallationResults.CitrixServicesDisabled = $CitrixServicesResult
+        else {
+            Write-Log "Windows services management had issues: $($CitrixServicesResult.Error)" "WARN"
+            $InstallConfig.InstallationResults.CitrixServicesDisabled = $CitrixServicesResult
+        }
+    } else {
+        Write-Log "Windows services management skipped - disabled in configuration"
+        $InstallConfig.InstallationResults.CitrixServicesDisabled = @{ Skipped = $true }
     }
-    else {
-        Write-Log "Citrix services management had issues: $($CitrixServicesResult.Error)" "WARN"
-        $InstallConfig.InstallationResults.CitrixServicesDisabled = $CitrixServicesResult
+    
+    # Configurable system optimizations (cache drive redirections moved to Stage 2)
+    
+    $OptimizeVDIRegistry = [bool](Get-ConfigValue -Key "OptimizeVDIRegistry" -DefaultValue "true")
+    if ($OptimizeVDIRegistry) {
+        Write-Log "Applying registry optimizations..."
+        Set-RegistryOptimizations
+    } else {
+        Write-Log "Registry optimizations skipped - disabled in configuration"
     }
     
-    Write-Log "Configuring event logs location..."
-    Set-EventLogs
-    
-    Write-Log "Applying registry optimizations..."
-    Set-RegistryOptimizations
-    
-    Write-Log "Applying VDI specific optimizations..."
-    Set-VDIOptimizations -PagefileSizeGB $PagefileSizeGB
+    $EnableVDIOptimizations = [bool](Get-ConfigValue -Key "EnableVDIOptimizations" -DefaultValue "true")
+    if ($EnableVDIOptimizations) {
+        Write-Log "Applying VDI specific optimizations (pagefile configuration deferred to Stage 2)..."
+        Set-VDIOptimizations -PagefileSizeGB $PagefileSizeGB
+    } else {
+        Write-Log "VDI optimizations skipped - disabled in configuration"
+    }
     
     Write-Log "Disabling VMware memory ballooning..."
     Stop-VMwareMemoryBallooning
@@ -1045,33 +1202,41 @@ try {
     # Enhanced Citrix components installation
     Write-LogHeader "Enhanced Citrix Components Installation"
     
-    # Install VDA from ISO (no delivery controller required)
-    # Note: VDA installer handles all prerequisites automatically
-    Write-Log "Installing Citrix VDA from ISO (no delivery controller required)..."
-    $VDAResult = Add-CitrixVDA -VDAISOSourcePath $VDAISOSourcePath -VDAISOPath $VDAISOPath -LogDir (Split-Path $LogPath -Parent)
-    $InstallConfig.InstallationResults.VDA = $VDAResult
-    
-    if ($VDAResult.Success) {
-        Write-Log "VDA installation completed successfully" "SUCCESS"
-    }
-    else {
-        Write-Log "VDA installation encountered issues" "ERROR"
-        if ($VDAResult.Issues.Count -gt 0) {
-            foreach ($Issue in $VDAResult.Issues) {
-                Write-Log "  - VDA Issue: $Issue" "ERROR"
+    # Install VDA from ISO (if enabled)
+    $InstallVDA = [bool](Get-ConfigValue -Key "InstallVDA" -DefaultValue "true")
+    if ($InstallVDA -and ![string]::IsNullOrEmpty($VDAISOSourcePath)) {
+        Write-Log "Installing Citrix VDA from ISO (no delivery controller required)..."
+        $VDAResult = Add-CitrixVDA -VDAISOSourcePath $VDAISOSourcePath -VDAISOPath $VDAISOPath -LogDir (Split-Path $LogPath -Parent) -ConfigFilePath $ConfigFilePath
+        $InstallConfig.InstallationResults.VDA = $VDAResult
+        
+        if ($VDAResult.Success) {
+            Write-Log "VDA installation completed successfully" "SUCCESS"
+        }
+        else {
+            Write-Log "VDA installation encountered issues" "ERROR"
+            if ($VDAResult.Issues.Count -gt 0) {
+                foreach ($Issue in $VDAResult.Issues) {
+                    Write-Log "  - VDA Issue: $Issue" "ERROR"
+                }
             }
         }
+        
+        if ($VDAResult.RebootRequired) {
+            $InstallConfig.RebootRequired = $true
+            Write-Log "VDA installation requires reboot" "WARN"
+        }
+    }
+    else {
+        $reason = if (!$InstallVDA) { "disabled in configuration" } else { "no path specified" }
+        Write-Log "VDA installation skipped - $reason"
+        $InstallConfig.InstallationResults.VDA = @{ Skipped = $true }
     }
     
-    if ($VDAResult.RebootRequired) {
-        $InstallConfig.RebootRequired = $true
-        Write-Log "VDA installation requires reboot" "WARN"
-    }
-    
-    # Install PVS Target Device from ISO (if specified, no PVS server required)
-    if (![string]::IsNullOrEmpty($PVSISOSourcePath)) {
+    # Install PVS Target Device from ISO (if enabled)
+    $InstallPVS = [bool](Get-ConfigValue -Key "InstallPVS" -DefaultValue "true")
+    if ($InstallPVS -and ![string]::IsNullOrEmpty($PVSISOSourcePath)) {
         Write-Log "Installing PVS Target Device from ISO (no PVS server required)..."
-        $PVSResult = Add-PVSTargetDevice -PVSISOSourcePath $PVSISOSourcePath -PVSISOPath $PVSISOPath
+        $PVSResult = Add-PVSTargetDevice -PVSISOSourcePath $PVSISOSourcePath -PVSISOPath $PVSISOPath -ConfigFilePath $ConfigFilePath
         $InstallConfig.InstallationResults.PVS = $PVSResult
         
         if ($PVSResult.Success) {
@@ -1087,14 +1252,16 @@ try {
         }
     }
     else {
-        Write-Log "PVS Target Device installation skipped - no path specified"
+        $reason = if (!$InstallPVS) { "disabled in configuration" } else { "no path specified" }
+        Write-Log "PVS Target Device installation skipped - $reason"
         $InstallConfig.InstallationResults.PVS = @{ Skipped = $true }
     }
     
-    # Install WEM Agent (if file exists in temp)
-    if (![string]::IsNullOrEmpty($WEMInstallerPath) -and (Test-Path $WEMInstallerPath)) {
+    # Install WEM Agent (if enabled and file exists in temp)
+    $InstallWEM = [bool](Get-ConfigValue -Key "InstallWEM" -DefaultValue "false")
+    if ($InstallWEM -and ![string]::IsNullOrEmpty($WEMInstallerPath) -and (Test-Path $WEMInstallerPath)) {
         Write-Log "Installing WEM Agent from temp directory..."
-        $WEMResult = Add-WEMAgent -WEMSourcePath $WEMInstallerSourcePath -WEMPath $WEMInstallerPath
+        $WEMResult = Add-WEMAgent -WEMSourcePath $WEMInstallerSourcePath -WEMPath $WEMInstallerPath -ConfigFilePath $ConfigFilePath
         $InstallConfig.InstallationResults.WEM = $WEMResult
         
         if ($WEMResult.Success) {
@@ -1110,15 +1277,17 @@ try {
         }
     }
     else {
-        Write-Log "WEM Agent installation skipped - no path specified"
+        $reason = if (!$InstallWEM) { "disabled in configuration" } else { "no path specified" }
+        Write-Log "WEM Agent installation skipped - $reason"
         $InstallConfig.InstallationResults.WEM = @{ Skipped = $true }
     }
     
-    # Install UberAgent (if file exists in temp)
-    if (![string]::IsNullOrEmpty($UberAgentInstallerPath) -and (Test-Path $UberAgentInstallerPath)) {
+    # Install UberAgent (if enabled and file exists in temp)
+    $InstallUberAgent = [bool](Get-ConfigValue -Key "InstallUberAgent" -DefaultValue "false")
+    if ($InstallUberAgent -and ![string]::IsNullOrEmpty($UberAgentInstallerPath) -and (Test-Path $UberAgentInstallerPath)) {
         Write-Log "Installing UberAgent from temp directory..."
         
-        $UberAgentResult = Add-UberAgent -UberAgentPath $UberAgentInstallerPath -ConfigFilePath $ConfigFilePath
+        $UberAgentResult = Add-UberAgent -UberAgentInstallerPath $UberAgentInstallerPath -ConfigFilePath $ConfigFilePath
         $InstallConfig.InstallationResults.UberAgent = $UberAgentResult
         
         if ($UberAgentResult.OverallSuccess) {
@@ -1135,13 +1304,15 @@ try {
         }
     }
     else {
-        Write-Log "UberAgent installation skipped - file not found in temp directory"
+        $reason = if (!$InstallUberAgent) { "disabled in configuration" } else { "file not found in temp directory" }
+        Write-Log "UberAgent installation skipped - $reason"
         $InstallConfig.InstallationResults.UberAgent = @{ Skipped = $true }
     }
     
-    # Configure IBM TADDM using local install.bat
+    # Configure IBM TADDM using local install.bat (if enabled)
+    $InstallTADDM = [bool](Get-ConfigValue -Key "InstallTADDM" -DefaultValue "false")
     $LocalTADDMInstallBat = "C:\IBM\TADDM\nonadmin_scripts\install.bat"
-    if (Test-Path $LocalTADDMInstallBat) {
+    if ($InstallTADDM -and (Test-Path $LocalTADDMInstallBat)) {
         Write-Log "Executing IBM TADDM install.bat for non-administrator configuration..."
         
         $TADDMParams = @{
@@ -1164,7 +1335,8 @@ try {
         }
     }
     else {
-        Write-Log "IBM TADDM configuration skipped - local install.bat not found at: $LocalTADDMInstallBat"
+        $reason = if (!$InstallTADDM) { "disabled in configuration" } else { "local install.bat not found at: $LocalTADDMInstallBat" }
+        Write-Log "IBM TADDM configuration skipped - $reason"
         $InstallConfig.InstallationResults.TADDM = @{ Skipped = $true }
     }
     
@@ -1228,24 +1400,41 @@ try {
         $InstallConfig.InstallationResults.DomainJoin = @{ Skipped = $true; Reason = "Disabled in configuration" }
     }
     
-    # Enhanced OS-Aware Startup and Shutdown Scripts Configuration
-    Write-LogHeader "OS-Aware Startup and Shutdown Scripts Configuration"
+    # Enhanced OS-Aware Startup and Shutdown Scripts Configuration (if enabled)
+    $DeployStartupScripts = [bool](Get-ConfigValue -Key "DeployStartupScripts" -DefaultValue "true")
+    $DeployShutdownScripts = [bool](Get-ConfigValue -Key "DeployShutdownScripts" -DefaultValue "true")
     
-    # Load OS-specific script source paths from configuration
-    $StartupSourceWin2019 = Get-ConfigValue -Key "StartupScriptsSourceWin2019" -DefaultValue "\\fileserver\scripts\startup\win2019" -ConfigFile $ConfigFilePath
-    $StartupSourceWin2022 = Get-ConfigValue -Key "StartupScriptsSourceWin2022" -DefaultValue "\\fileserver\scripts\startup\win2022" -ConfigFile $ConfigFilePath
-    $StartupDestination = Get-ConfigValue -Key "StartupScriptsDestination" -DefaultValue "C:\Scripts\Startup" -ConfigFile $ConfigFilePath
+    if ($DeployStartupScripts -or $DeployShutdownScripts) {
+        Write-LogHeader "OS-Aware Startup and Shutdown Scripts Configuration"
+        
+        # Load OS-specific script source paths from configuration
+        $StartupSourceWin2019 = Get-ConfigValue -Key "StartupScriptsSourceWin2019" -DefaultValue "\\fileserver\scripts\startup\win2019" -ConfigFile $ConfigFilePath
+        $StartupSourceWin2022 = Get-ConfigValue -Key "StartupScriptsSourceWin2022" -DefaultValue "\\fileserver\scripts\startup\win2022" -ConfigFile $ConfigFilePath
+        $StartupDestination = Get-ConfigValue -Key "StartupScriptsDestination" -DefaultValue "C:\Scripts\Startup" -ConfigFile $ConfigFilePath
+        
+        $ShutdownSourceWin2019 = Get-ConfigValue -Key "ShutdownScriptsSourceWin2019" -DefaultValue "\\fileserver\scripts\shutdown\win2019" -ConfigFile $ConfigFilePath
+        $ShutdownSourceWin2022 = Get-ConfigValue -Key "ShutdownScriptsSourceWin2022" -DefaultValue "\\fileserver\scripts\shutdown\win2022" -ConfigFile $ConfigFilePath
+        $ShutdownDestination = Get-ConfigValue -Key "ShutdownScriptsDestination" -DefaultValue "C:\Scripts\Shutdown" -ConfigFile $ConfigFilePath
+        
+        Write-Log "Copying OS-specific startup and shutdown scripts..."
+        $ScriptCopyParams = @{
+            StartupSourceWin2019 = if ($DeployStartupScripts) { $StartupSourceWin2019 } else { "" }
+            StartupSourceWin2022 = if ($DeployStartupScripts) { $StartupSourceWin2022 } else { "" }
+            StartupDestination = if ($DeployStartupScripts) { $StartupDestination } else { "" }
+            ShutdownSourceWin2019 = if ($DeployShutdownScripts) { $ShutdownSourceWin2019 } else { "" }
+            ShutdownSourceWin2022 = if ($DeployShutdownScripts) { $ShutdownSourceWin2022 } else { "" }
+            ShutdownDestination = if ($DeployShutdownScripts) { $ShutdownDestination } else { "" }
+        }
+        $ScriptCopyResult = Copy-OSSpecificStartupShutdownScripts @ScriptCopyParams
+        $InstallConfig.InstallationResults.Scripts = $ScriptCopyResult
+    } else {
+        Write-Log "Startup and shutdown script deployment disabled in configuration"
+        $InstallConfig.InstallationResults.Scripts = @{ Skipped = $true; Reason = "Disabled in configuration" }
+        $ScriptCopyResult = @{ StartupCopied = $false; ShutdownCopied = $false; Skipped = $true }
+    }
     
-    $ShutdownSourceWin2019 = Get-ConfigValue -Key "ShutdownScriptsSourceWin2019" -DefaultValue "\\fileserver\scripts\shutdown\win2019" -ConfigFile $ConfigFilePath
-    $ShutdownSourceWin2022 = Get-ConfigValue -Key "ShutdownScriptsSourceWin2022" -DefaultValue "\\fileserver\scripts\shutdown\win2022" -ConfigFile $ConfigFilePath
-    $ShutdownDestination = Get-ConfigValue -Key "ShutdownScriptsDestination" -DefaultValue "C:\Scripts\Shutdown" -ConfigFile $ConfigFilePath
-    
-    Write-Log "Copying OS-specific startup and shutdown scripts..."
-    $ScriptCopyResult = Copy-OSSpecificStartupShutdownScripts -StartupSourceWin2019 $StartupSourceWin2019 -StartupSourceWin2022 $StartupSourceWin2022 -StartupDestination $StartupDestination -ShutdownSourceWin2019 $ShutdownSourceWin2019 -ShutdownSourceWin2022 $ShutdownSourceWin2022 -ShutdownDestination $ShutdownDestination
-    
-    $InstallConfig.InstallationResults.Scripts = $ScriptCopyResult
-    
-    if ($ScriptCopyResult.StartupCopied -or $ScriptCopyResult.ShutdownCopied) {
+    $RegisterScriptsInGPO = [bool](Get-ConfigValue -Key "RegisterScriptsInGPO" -DefaultValue "true")
+    if (($ScriptCopyResult.StartupCopied -or $ScriptCopyResult.ShutdownCopied) -and $RegisterScriptsInGPO) {
         Write-Log "Configuring copied scripts for Group Policy execution..."
         $ScriptConfigResult = Set-StartupShutdownScripts -ScriptCopyResults $ScriptCopyResult -StartupDestination $StartupDestination -ShutdownDestination $ShutdownDestination
         
@@ -1259,7 +1448,8 @@ try {
         }
     }
     else {
-        Write-Log "No scripts were copied - configuration skipped"
+        $reason = if (!$RegisterScriptsInGPO) { "GPO registration disabled in configuration" } else { "no scripts were copied" }
+        Write-Log "Script configuration skipped - $reason"
         $InstallConfig.InstallationResults.ScriptConfiguration = @{ Skipped = $true }
     }
     
@@ -1334,11 +1524,7 @@ try {
     Write-Log "- System is ready for final configuration"
     Write-Log "- Server connections will be configured during deployment"
     
-    # Create installation report
-    if ($CreateBackups) {
-        Write-Log "Creating installation report..."
-        New-InstallationReport -Config $InstallConfig
-    }
+
     
     # Copy Stage 2 Script to LocalInstallPath and Save Configuration
     Write-LogHeader "Preparing Stage 2 Script for Manual Execution"

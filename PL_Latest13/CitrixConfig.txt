@@ -31,6 +31,9 @@ LocalInstallPath=C:\Temp
 VDAISOSourcePath=%NetworkSourcePath%\installers\VDA\VDAServerSetup_2402.iso
 VDAISOPath=%LocalInstallPath%\VDA.iso
 
+# VDA Installation Command Arguments
+VDAInstallArguments=/quiet /norestart /components vda,plugins /enable_hdx_ports /enable_real_time_transport /masterimage
+
 # ======================
 # PVS TARGET DEVICE INSTALLATION
 # ======================
@@ -38,6 +41,9 @@ VDAISOPath=%LocalInstallPath%\VDA.iso
 
 PVSISOSourcePath=%NetworkSourcePath%\installers\PVS\PVS_Target_2402.iso
 PVSISOPath=%LocalInstallPath%\PVS.iso
+
+# PVS Installation Command Arguments
+PVSInstallArguments=/S
 
 # ======================
 # WEM AGENT INSTALLATION
@@ -47,6 +53,13 @@ PVSISOPath=%LocalInstallPath%\PVS.iso
 WEMInstallerSourcePath=%NetworkSourcePath%\installers\WEM\Citrix_Workspace_Environment_Management_Agent_2402.msi
 WEMInstallerPath=%LocalInstallPath%\WEMAgent.msi
 
+# WEM Agent Cache Configuration
+WEMAgentCacheLocation=D:\WEM\Cache
+ConfigureWEMAgentCache=true
+
+# WEM Installation Command Arguments
+WEMInstallArguments=/quiet /norestart
+
 # ======================
 # UBERAGENT INSTALLATION
 # ======================
@@ -54,7 +67,6 @@ WEMInstallerPath=%LocalInstallPath%\WEMAgent.msi
 
 UberAgentInstallerSourcePath=%NetworkSourcePath%\installers\UberAgent\\uberAgent_7.0.0.msi
 UberAgentInstallerPath=%LocalInstallPath%\UberAgent.msi
-UberAgentPath=
 
 # UberAgent Template and Configuration Files
 UberAgentTemplatesPath=%NetworkSourcePath%\UberAgent\Templates
@@ -119,7 +131,7 @@ CitrixServicesToDisable=CdfSvc,Spooler,BITS,wuauserv
 # ======================
 # COMPONENT INSTALLATION CONTROL
 # ======================
-# Enable/disable specific installation components
+# Boolean flags to control component installation
 
 InstallVDA=true
 InstallPVS=true
@@ -132,18 +144,27 @@ InstallTADDM=false
 # ======================
 # Core system configuration parameters
 
-# Cache drive configuration (D: drive mandatory for VDI performance)
+# Cache drive configuration
 CacheDriveLetter=D
-CachePagefileSize=8192
+ConfigureCacheDrive=true
+RedirectPagefileToCache=true
 RedirectEventLogsToCache=true
 RedirectUserProfilesToCache=true
 
-# CD/DVD drive relocation (automatically moved to Y: for VDI compatibility)
+# CD/DVD drive relocation
 CDDVMTargetDrive=Y
+RelocateCDDVDDrive=true
 
 # Pagefile configuration
 PagefileSizeGB=8
-PagefileLocation=D:\pagefile.sys
+
+# Virtual Cache Drive Options (VHDX-based cache drive alternative)
+UseVirtualCacheDrive=true
+VirtualCacheDrivePath=C:\Temp\DCACHE.VHDX
+VirtualCacheDriveSizeMB=500
+VirtualCacheDriveLabel=VCache
+VirtualCacheDriveLetter=D
+ConfigurePagefile=true
 
 # ======================
 # DOMAIN CONFIGURATION
@@ -166,37 +187,30 @@ RegisterThisConnectionsAddress=true
 # ======================
 # VALIDATION AND ERROR HANDLING
 # ======================
-# Script validation and error handling configuration
+# Script behavior control
 
 ValidationMode=Enhanced
 ContinueOnWarnings=true
-CreateBackups=true
 DetailedLogging=true
-
-# Log file configuration
 LogPath=%USERPROFILE%\Desktop\CitrixInstallation_%DATE%_%TIME%.log
-LogLevel=Detailed
-ArchiveOldLogs=true
 
 # ======================
 # VDI OPTIMIZATION SETTINGS
 # ======================
-# Advanced VDI optimization parameters
+# System optimization boolean flags
 
-# System optimization settings
 EnableVDIOptimizations=true
+RunCitrixOptimizer=true
 DisableWindowsServices=true
-ConfigureEventLogRedirection=true
-
-# Services to disable for VDI performance
 DisableWindowsUpdate=true
 DisableDefender=false
 DisableSuperfetch=true
 DisableWindowsSearch=false
+DisableHibernation=true
+DisableUAC=false
 
 # Registry optimizations
 OptimizeVDIRegistry=true
-DisableUAC=false
 ConfigureVisualEffects=true
 
 # Network optimizations
@@ -206,5 +220,12 @@ ConfigureTCPSettings=true
 
 # Storage optimizations
 EnableStorageOptimizations=true
-DisableHibernation=true
-ConfigureSystemRestore=true
+
+# ======================
+# STARTUP/SHUTDOWN SCRIPT CONTROL
+# ======================
+# Script deployment boolean flags
+
+DeployStartupScripts=true
+DeployShutdownScripts=true
+RegisterScriptsInGPO=true

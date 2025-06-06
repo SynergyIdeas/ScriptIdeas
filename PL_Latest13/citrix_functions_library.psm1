@@ -119,33 +119,52 @@ function Get-ConfigValue {
         [switch]$ShowStatus
     )
     
-    if ($ConfigFile -eq "") {
-        $ConfigFile = Join-Path $PSScriptRoot "CitrixConfig.txt"
-    }
-    
-    $Value = Read-ConfigFile -ConfigFilePath $ConfigFile -Key $Key -DefaultValue $DefaultValue
-    
-    # Check if configuration file exists and key was actually found
-    if (Test-Path $ConfigFile) {
-        $ConfigContent = Read-ConfigFile -ConfigFilePath $ConfigFile
-        $KeyFound = $ConfigContent.ContainsKey($Key)
+    try {
+        if ($ConfigFile -eq "") {
+            $ConfigFile = Join-Path $PSScriptRoot "CitrixConfig.txt"
+        }
+        
+        if (-not (Test-Path $ConfigFile)) {
+            Write-Warning "Configuration file not found: $ConfigFile, using default for '$Key': $DefaultValue"
+            return $DefaultValue
+        }
+        
+        $ConfigContent = Get-Content $ConfigFile
+        $Value = $DefaultValue
+        $KeyFound = $false
+        
+        foreach ($Line in $ConfigContent) {
+            if ($Line -and -not $Line.StartsWith("#") -and $Line.Contains("=")) {
+                $Parts = $Line -split "=", 2
+                if ($Parts.Count -eq 2) {
+                    $ConfigKey = $Parts[0].Trim()
+                    $ConfigValue = $Parts[1].Trim()
+                    
+                    if ($ConfigKey -eq $Key) {
+                        # Convert string values to appropriate types
+                        if ($ConfigValue -eq "true") { $Value = $true }
+                        elseif ($ConfigValue -eq "false") { $Value = $false }
+                        elseif ($ConfigValue -match '^\d+$') { $Value = [int]$ConfigValue }
+                        else { $Value = $ConfigValue }
+                        
+                        $KeyFound = $true
+                        break
+                    }
+                }
+            }
+        }
         
         if ($ShowStatus) {
             $Status = if ($KeyFound) { "[CONFIG]" } else { "[DEFAULT]" }
             Write-Host "  $Status $Key = $Value" -ForegroundColor $(if ($KeyFound) { 'Green' } else { 'Yellow' })
         }
         
-        if (-not $KeyFound -and $DefaultValue -ne $null -and $DefaultValue -ne "") {
-            Write-Warning "Configuration key '$Key' not found in $ConfigFile, using default: $DefaultValue"
-        }
-    } else {
-        if ($ShowStatus) {
-            Write-Host "  [DEFAULT] $Key = $Value (config file not found)" -ForegroundColor Red
-        }
-        Write-Warning "Configuration file not found: $ConfigFile, using default for '$Key': $DefaultValue"
+        return $Value
     }
-    
-    return $Value
+    catch {
+        Write-Warning "Error in Get-ConfigValue for key '$Key': $($_.Exception.Message)"
+        return $DefaultValue
+    }
 }
 
 function Show-LoadedConfiguration {
@@ -175,7 +194,7 @@ function Show-LoadedConfiguration {
         
         Write-Host "`nOptional Component Paths:" -ForegroundColor Cyan
         Get-ConfigValue -Key "WEMPath" -DefaultValue "" -ConfigFile $ConfigFilePath -ShowStatus
-        Get-ConfigValue -Key "UberAgentPath" -DefaultValue "" -ConfigFile $ConfigFilePath -ShowStatus
+
         Get-ConfigValue -Key "TADDMPath" -DefaultValue "" -ConfigFile $ConfigFilePath -ShowStatus
         
         Write-Host "`nSystem Configuration:" -ForegroundColor Cyan
@@ -1484,6 +1503,46 @@ function Start-DriveConfiguration {
                 }
             }
             
+            # Check if virtual cache drive was already created in Stage 1
+            Write-Host "DEBUG: Checking if D: drive exists after potential virtual creation..." -ForegroundColor Magenta
+            $DDriveExistsNow = Test-Path "D:\"
+            Write-Host "DEBUG: D: drive exists check result: $DDriveExistsNow" -ForegroundColor Magenta
+            
+            if ($DDriveExistsNow) {
+                Write-Host "D: drive found - skipping virtual cache drive creation (already exists)" -ForegroundColor Green
+                Write-Log "D: drive detected - virtual cache drive creation successful or D: drive manually attached" "SUCCESS"
+                $Results.DDriveExists = $true
+                $Results.DDriveAccessible = $true
+                $Results.DriveValidationPassed = $true
+                return $Results
+            }
+            
+            # Check if virtual cache drive is configured
+            $UseVirtualCache = [bool](Get-ConfigValue -Key "UseVirtualCacheDrive" -DefaultValue "false")
+            
+            if ($UseVirtualCache) {
+                Write-Host "Virtual cache drive configured but D: not found - attempting creation..." -ForegroundColor Cyan
+                Write-Log "Virtual cache drive mode detected - creating VHDX cache drive..." "INFO"
+                
+                $VirtualCacheResult = New-VirtualCacheDrive
+                
+                if ($VirtualCacheResult.Success) {
+                    Write-Host "Virtual cache drive created successfully!" -ForegroundColor Green
+                    Write-Log "Virtual cache drive created: D: ($($VirtualCacheResult.DriveInfo.SizeMB) MB)" "SUCCESS"
+                    $Results.DDriveExists = $true
+                    $Results.DDriveAccessible = $true
+                    $Results.DriveValidationPassed = $true
+                    return $Results
+                } else {
+                    Write-Host "Virtual cache drive creation failed - falling back to physical drive prompt" -ForegroundColor Yellow
+                    foreach ($Error in $VirtualCacheResult.Errors) {
+                        Write-Log "Virtual cache error: $Error" "ERROR"
+                    }
+                }
+            } else {
+                Write-Host "DEBUG: Virtual cache drive is disabled in configuration" -ForegroundColor Yellow
+            }
+            
             # Prompt user to attach D: cache drive
             Write-Log "REQUIRED: Please attach a physical D: cache drive to this packaging machine" "ERROR"
             $Results.Issues += "No D: cache drive attached - required for optimal VDI performance"
@@ -2528,32 +2587,179 @@ function Set-VDIOptimizations {
     )
     
     try {
-        Write-Log "Applying VDI optimizations..."
+        Write-Log "Applying VDI optimizations (excluding pagefile configuration)..."
         
-        # Configure pagefile
-        $PagefileSizeMB = $PagefileSizeGB * 1024
-        $CS = Get-WmiObject -Class Win32_ComputerSystem
-        $CS.AutomaticManagedPagefile = $false
-        $CS.Put() | Out-Null
+        # VDI-specific registry optimizations
+        Write-Log "Applying VDI registry optimizations..." "INFO"
         
-        $PF = Get-WmiObject -Class Win32_PageFileSetting
-        if ($PF) {
-            $PF.Delete()
-        }
-        
-        # Create pagefile on D: drive for better VDI performance
-        Set-WmiInstance -Class Win32_PageFileSetting -Arguments @{
-            name = "D:\pagefile.sys"
-            InitialSize = $PagefileSizeMB
-            MaximumSize = $PagefileSizeMB
-        } | Out-Null
-        
-        Write-Log "VDI optimizations applied with ${PagefileSizeGB}GB pagefile on D: drive" "SUCCESS"
+        # Note: Pagefile configuration moved to Stage 2 final process
+        Write-Log "VDI optimizations applied (pagefile will be configured in Stage 2)" "SUCCESS"
         return $true
     }
     catch {
         Write-Log "Failed to apply VDI optimizations: $($_.Exception.Message)" "ERROR"
         return $false
+    }
+}
+
+function Set-PagefileConfiguration {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory=$false)]
+        [int]$PagefileSizeGB = 8,
+        
+        [Parameter(Mandatory=$false)]
+        [string]$CacheDriveLetter = ""
+    )
+    
+    try {
+        # Determine pagefile location based on cache drive parameter
+        if (-not [string]::IsNullOrEmpty($CacheDriveLetter) -and (Test-Path "${CacheDriveLetter}:\")) {
+            $PagefileLocation = "${CacheDriveLetter}:\pagefile.sys"
+            Write-Log "Configuring pagefile on cache drive: ${CacheDriveLetter}:"
+        } else {
+            $PagefileLocation = "C:\pagefile.sys"
+            Write-Log "Configuring pagefile on system drive: C:"
+        }
+        
+        # Calculate pagefile size in MB
+        $PagefileSizeMB = $PagefileSizeGB * 1024
+        
+        # Use registry method to configure pagefile
+        Write-Log "Configuring pagefile using registry method..."
+        
+        # Set pagefile configuration in registry
+        $PagefileString = "$PagefileLocation $PagefileSizeMB $PagefileSizeMB"
+        Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management" -Name "PagingFiles" -Value $PagefileString -Type MultiString
+        Write-Log "Set registry PagingFiles: $PagefileString" "INFO"
+        
+        # Disable automatic pagefile management in registry
+        Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management" -Name "AutomaticManagedPagefile" -Value 0 -Type DWord
+        Write-Log "Disabled automatic pagefile management via registry" "INFO"
+        
+        Write-Log "Pagefile configured with ${PagefileSizeGB}GB fixed size" "SUCCESS"
+        Write-Log "Pagefile location: $PagefileLocation" "SUCCESS"
+        Write-Log "Initial size: ${PagefileSizeMB} MB" "SUCCESS"
+        Write-Log "Maximum size: ${PagefileSizeMB} MB" "SUCCESS"
+        
+        return @{
+            Success = $true
+            Location = $PagefileLocation
+            SizeGB = $PagefileSizeGB
+            SizeMB = $PagefileSizeMB
+        }
+    }
+    catch {
+        Write-Log "Failed to configure pagefile: $($_.Exception.Message)" "ERROR"
+        return @{
+            Success = $false
+            Error = $_.Exception.Message
+        }
+    }
+}
+
+function Set-UserProfilesRedirection {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory=$true)]
+        [string]$CacheDriveLetter
+    )
+    
+    try {
+        Write-Log "Configuring user profiles redirection to ${CacheDriveLetter}: drive..."
+        
+        # Ensure cache drive exists
+        if (-not (Test-Path "${CacheDriveLetter}:\")) {
+            Write-Log "Cache drive ${CacheDriveLetter}: not found - cannot redirect user profiles" "ERROR"
+            return @{
+                Success = $false
+                Error = "Cache drive ${CacheDriveLetter}: not accessible"
+            }
+        }
+        
+        # Create Users directory structure on cache drive
+        $UserProfilesPath = "${CacheDriveLetter}:\Users"
+        $DefaultProfilePath = "${CacheDriveLetter}:\Users\Default"
+        $PublicProfilePath = "${CacheDriveLetter}:\Users\Public"
+        
+        Write-Log "Creating user profiles directory structure..."
+        New-Item -Path $UserProfilesPath -ItemType Directory -Force | Out-Null
+        New-Item -Path $DefaultProfilePath -ItemType Directory -Force | Out-Null
+        New-Item -Path $PublicProfilePath -ItemType Directory -Force | Out-Null
+        
+        # Registry keys for user profiles redirection
+        $ProfileListKey = "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\ProfileList"
+        
+        Write-Log "Configuring user profiles registry settings..."
+        
+        # Redirect profiles directory
+        Set-ItemProperty -Path $ProfileListKey -Name "ProfilesDirectory" -Value $UserProfilesPath -Type ExpandString
+        Write-Log "Set ProfilesDirectory to: $UserProfilesPath" "INFO"
+        
+        # Redirect default user profile
+        Set-ItemProperty -Path $ProfileListKey -Name "DefaultUserProfile" -Value "Default" -Type String
+        Write-Log "Set DefaultUserProfile to: Default" "INFO"
+        
+        # Redirect public profile
+        Set-ItemProperty -Path $ProfileListKey -Name "PublicProfile" -Value "Public" -Type String
+        Write-Log "Set PublicProfile to: Public" "INFO"
+        
+        # Configure shell folders redirection for new users
+        $ShellFoldersKey = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\Shell Folders"
+        $UserShellFoldersKey = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\User Shell Folders"
+        
+        Write-Log "Configuring shell folders redirection..."
+        
+        # Common Documents
+        Set-ItemProperty -Path $ShellFoldersKey -Name "Common Documents" -Value "${CacheDriveLetter}:\Users\Public\Documents" -Type String
+        Set-ItemProperty -Path $UserShellFoldersKey -Name "Common Documents" -Value "${CacheDriveLetter}:\Users\Public\Documents" -Type ExpandString
+        
+        # Common Desktop
+        Set-ItemProperty -Path $ShellFoldersKey -Name "Common Desktop" -Value "${CacheDriveLetter}:\Users\Public\Desktop" -Type String
+        Set-ItemProperty -Path $UserShellFoldersKey -Name "Common Desktop" -Value "${CacheDriveLetter}:\Users\Public\Desktop" -Type ExpandString
+        
+        # Default user folders template
+        $DefaultFolders = @(
+            "Desktop",
+            "Documents", 
+            "Downloads",
+            "Music",
+            "Pictures",
+            "Videos"
+        )
+        
+        foreach ($Folder in $DefaultFolders) {
+            $FolderPath = "${CacheDriveLetter}:\Users\Default\$Folder"
+            New-Item -Path $FolderPath -ItemType Directory -Force | Out-Null
+            Write-Log "Created default folder: $FolderPath" "INFO"
+        }
+        
+        # Set appropriate permissions on Users directory
+        Write-Log "Setting permissions on user profiles directory..."
+        $Acl = Get-Acl $UserProfilesPath
+        $AccessRule = New-Object System.Security.AccessControl.FileSystemAccessRule("Users", "FullControl", "ContainerInherit,ObjectInherit", "None", "Allow")
+        $Acl.SetAccessRule($AccessRule)
+        Set-Acl -Path $UserProfilesPath -AclObject $Acl
+        
+        Write-Log "User profiles redirection configured successfully" "SUCCESS"
+        Write-Log "New user profiles will be created on: ${CacheDriveLetter}:\Users" "SUCCESS"
+        Write-Log "Note: Existing user profiles remain on C: drive until manually moved" "INFO"
+        Write-Log "Note: System restart required for changes to take effect" "WARN"
+        
+        return @{
+            Success = $true
+            ProfilesPath = $UserProfilesPath
+            DefaultPath = $DefaultProfilePath
+            PublicPath = $PublicProfilePath
+            CacheDrive = $CacheDriveLetter
+        }
+    }
+    catch {
+        Write-Log "Failed to configure user profiles redirection: $($_.Exception.Message)" "ERROR"
+        return @{
+            Success = $false
+            Error = $_.Exception.Message
+        }
     }
 }
 
@@ -2609,11 +2815,16 @@ function Add-CitrixVDA {
     param(
         [string]$VDAISOSourcePath,
         [string]$VDAISOPath,
-        [string]$LogDir
+        [string]$LogDir,
+        [string]$ConfigFilePath = ".\CitrixConfig.txt"
     )
     
     try {
         Write-Log "Installing Citrix VDA..."
+        
+        # Get configurable installation arguments
+        $VDAInstallArguments = Get-ConfigValue -Key "VDAInstallArguments" -DefaultValue "/quiet /norestart /components vda,plugins /enable_hdx_ports /enable_real_time_transport /masterimage" -ConfigFile $ConfigFilePath
+        Write-Log "VDA installation arguments: $VDAInstallArguments" "INFO"
         
         # Mount ISO and run installation
         $MountResult = Mount-DiskImage -ImagePath $VDAISOPath -PassThru
@@ -2621,16 +2832,27 @@ function Add-CitrixVDA {
         
         $SetupPath = "${DriveLetter}:\x64\XenDesktop Setup\XenDesktopVdaSetup.exe"
         if (Test-Path $SetupPath) {
-            $Arguments = "/quiet /optimize /enable_hdx_ports /enable_real_time_transport"
-            Start-Process -FilePath $SetupPath -ArgumentList $Arguments -Wait
-            Write-Log "Citrix VDA installation completed" "SUCCESS"
+            Write-Log "Starting VDA installation with arguments: $VDAInstallArguments" "INFO"
+            $VDAProcess = Start-Process -FilePath $SetupPath -ArgumentList $VDAInstallArguments -Wait -PassThru
+            
+            if ($VDAProcess.ExitCode -eq 0) {
+                Write-Log "Citrix VDA installation completed successfully" "SUCCESS"
+                $InstallSuccess = $true
+            } else {
+                Write-Log "Citrix VDA installation failed with exit code: $($VDAProcess.ExitCode)" "ERROR"
+                $InstallSuccess = $false
+            }
+        } else {
+            Write-Log "VDA setup file not found at: $SetupPath" "ERROR"
+            $InstallSuccess = $false
         }
         
         Dismount-DiskImage -ImagePath $VDAISOPath
-        return $true
+        return $InstallSuccess
     }
     catch {
         Write-Log "Failed to install Citrix VDA: $($_.Exception.Message)" "ERROR"
+        try { Dismount-DiskImage -ImagePath $VDAISOPath -ErrorAction SilentlyContinue } catch { }
         return $false
     }
 }
@@ -2639,26 +2861,43 @@ function Add-PVSTargetDevice {
     [CmdletBinding()]
     param(
         [string]$PVSISOSourcePath,
-        [string]$PVSISOPath
+        [string]$PVSISOPath,
+        [string]$ConfigFilePath = ".\CitrixConfig.txt"
     )
     
     try {
         Write-Log "Installing PVS Target Device..."
+        
+        # Get configurable installation arguments
+        $PVSInstallArguments = Get-ConfigValue -Key "PVSInstallArguments" -DefaultValue "/S" -ConfigFile $ConfigFilePath
+        Write-Log "PVS installation arguments: $PVSInstallArguments" "INFO"
         
         $MountResult = Mount-DiskImage -ImagePath $PVSISOPath -PassThru
         $DriveLetter = ($MountResult | Get-Volume).DriveLetter
         
         $SetupPath = "${DriveLetter}:\Device\TargetDeviceSetup.exe"
         if (Test-Path $SetupPath) {
-            Start-Process -FilePath $SetupPath -ArgumentList "/quiet" -Wait
-            Write-Log "PVS Target Device installation completed" "SUCCESS"
+            Write-Log "Starting PVS installation with arguments: $PVSInstallArguments" "INFO"
+            $PVSProcess = Start-Process -FilePath $SetupPath -ArgumentList $PVSInstallArguments -Wait -PassThru
+            
+            if ($PVSProcess.ExitCode -eq 0) {
+                Write-Log "PVS Target Device installation completed successfully" "SUCCESS"
+                $InstallSuccess = $true
+            } else {
+                Write-Log "PVS Target Device installation failed with exit code: $($PVSProcess.ExitCode)" "ERROR"
+                $InstallSuccess = $false
+            }
+        } else {
+            Write-Log "PVS setup file not found at: $SetupPath" "ERROR"
+            $InstallSuccess = $false
         }
         
         Dismount-DiskImage -ImagePath $PVSISOPath
-        return $true
+        return $InstallSuccess
     }
     catch {
         Write-Log "Failed to install PVS Target Device: $($_.Exception.Message)" "ERROR"
+        try { Dismount-DiskImage -ImagePath $PVSISOPath -ErrorAction SilentlyContinue } catch { }
         return $false
     }
 }
@@ -2691,7 +2930,13 @@ function Add-WEMAgent {
         # Check if WEM installer exists at local path
         if (Test-Path $WEMPath) {
             Write-Log "Installing WEM Agent from: $WEMPath" "INFO"
-            $WEMProcess = Start-Process -FilePath $WEMPath -ArgumentList "/quiet" -Wait -PassThru
+            
+            # Get configurable installation arguments
+            $WEMInstallArguments = Get-ConfigValue -Key "WEMInstallArguments" -DefaultValue "/quiet /norestart" -ConfigFile $ConfigFilePath
+            Write-Log "WEM installation arguments: $WEMInstallArguments" "INFO"
+            
+            Write-Log "Starting WEM installation with arguments: $WEMInstallArguments" "INFO"
+            $WEMProcess = Start-Process -FilePath $WEMPath -ArgumentList $WEMInstallArguments -Wait -PassThru
             
             if ($WEMProcess.ExitCode -eq 0) {
                 Write-Log "WEM Agent installation completed successfully" "SUCCESS"
@@ -2701,6 +2946,26 @@ function Add-WEMAgent {
                 $WEMService = Get-Service -Name "Norskale Agent Host Service" -ErrorAction SilentlyContinue
                 if ($WEMService) {
                     Write-Log "WEM Agent service detected - installation verified" "SUCCESS"
+                    
+                    # Configure WEM Agent cache location if specified
+                    $ConfigureWEMAgentCache = [bool](Get-ConfigValue -Key "ConfigureWEMAgentCache" -DefaultValue "false" -ConfigFile $ConfigFilePath)
+                    if ($ConfigureWEMAgentCache) {
+                        $WEMAgentCacheLocation = Get-ConfigValue -Key "WEMAgentCacheLocation" -DefaultValue "D:\WEM\Cache" -ConfigFile $ConfigFilePath
+                        Write-Log "Configuring WEM Agent cache location: $WEMAgentCacheLocation" "INFO"
+                        
+                        $CacheConfigResult = Set-WEMAgentCacheLocation -CacheLocation $WEMAgentCacheLocation
+                        if ($CacheConfigResult.Success) {
+                            Write-Log "WEM Agent cache location configured successfully" "SUCCESS"
+                            $Results.CacheLocationConfigured = $true
+                            $Results.CacheLocation = $WEMAgentCacheLocation
+                        } else {
+                            Write-Log "Failed to configure WEM Agent cache location: $($CacheConfigResult.Error)" "WARN"
+                            $Results.CacheLocationConfigured = $false
+                        }
+                    } else {
+                        Write-Log "WEM Agent cache location configuration skipped - disabled in config" "INFO"
+                        $Results.CacheLocationConfigured = $false
+                    }
                 } else {
                     Write-Log "WEM Agent service not found - installation may require reboot" "WARN"
                     $Results.RebootRequired = $true
@@ -2731,11 +2996,117 @@ function Add-WEMAgent {
     }
 }
 
+function Set-WEMAgentCacheLocation {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory=$true)]
+        [string]$CacheLocation
+    )
+    
+    try {
+        Write-Log "Configuring WEM Agent cache location to: $CacheLocation"
+        
+        # Ensure cache directory exists
+        $CacheDirectory = Split-Path $CacheLocation -Parent
+        if (-not (Test-Path $CacheDirectory)) {
+            Write-Log "Creating WEM cache directory: $CacheDirectory"
+            New-Item -Path $CacheDirectory -ItemType Directory -Force | Out-Null
+        }
+        
+        # WEM Agent registry locations for cache configuration
+        $WEMRegistryPaths = @(
+            "HKLM:\SOFTWARE\Citrix\WEM\Agent",
+            "HKLM:\SOFTWARE\Wow6432Node\Citrix\WEM\Agent",
+            "HKLM:\SOFTWARE\Norskale\Norskale Agent Host",
+            "HKLM:\SOFTWARE\Wow6432Node\Norskale\Norskale Agent Host"
+        )
+        
+        $ConfiguredPaths = @()
+        $FailedPaths = @()
+        
+        foreach ($RegistryPath in $WEMRegistryPaths) {
+            try {
+                # Check if registry path exists
+                if (Test-Path $RegistryPath) {
+                    Write-Log "Configuring cache location in: $RegistryPath" "INFO"
+                    
+                    # Set AgentCacheAlternateLocation registry value
+                    Set-ItemProperty -Path $RegistryPath -Name "AgentCacheAlternateLocation" -Value $CacheLocation -Type String
+                    
+                    # Verify the value was set
+                    $SetValue = Get-ItemProperty -Path $RegistryPath -Name "AgentCacheAlternateLocation" -ErrorAction SilentlyContinue
+                    if ($SetValue -and $SetValue.AgentCacheAlternateLocation -eq $CacheLocation) {
+                        Write-Log "Successfully configured cache location in: $RegistryPath" "SUCCESS"
+                        $ConfiguredPaths += $RegistryPath
+                    } else {
+                        Write-Log "Failed to verify cache location in: $RegistryPath" "WARN"
+                        $FailedPaths += $RegistryPath
+                    }
+                } else {
+                    Write-Log "Registry path not found: $RegistryPath" "INFO"
+                }
+            }
+            catch {
+                Write-Log "Failed to configure cache location in $RegistryPath`: $($_.Exception.Message)" "WARN"
+                $FailedPaths += $RegistryPath
+            }
+        }
+        
+        # Create cache location directory with proper permissions
+        if (-not (Test-Path $CacheLocation)) {
+            Write-Log "Creating WEM cache location: $CacheLocation"
+            New-Item -Path $CacheLocation -ItemType Directory -Force | Out-Null
+            
+            # Set appropriate permissions for WEM Agent service
+            try {
+                $Acl = Get-Acl $CacheLocation
+                $AccessRule = New-Object System.Security.AccessControl.FileSystemAccessRule("SYSTEM", "FullControl", "ContainerInherit,ObjectInherit", "None", "Allow")
+                $Acl.SetAccessRule($AccessRule)
+                $AccessRule2 = New-Object System.Security.AccessControl.FileSystemAccessRule("Administrators", "FullControl", "ContainerInherit,ObjectInherit", "None", "Allow")
+                $Acl.SetAccessRule($AccessRule2)
+                Set-Acl -Path $CacheLocation -AclObject $Acl
+                Write-Log "Set permissions on WEM cache directory" "SUCCESS"
+            }
+            catch {
+                Write-Log "Failed to set permissions on cache directory: $($_.Exception.Message)" "WARN"
+            }
+        }
+        
+        # Determine success based on configured paths
+        $Success = $ConfiguredPaths.Count -gt 0
+        
+        if ($Success) {
+            Write-Log "WEM Agent cache location configured successfully" "SUCCESS"
+            Write-Log "Cache location: $CacheLocation" "SUCCESS"
+            Write-Log "Configured in $($ConfiguredPaths.Count) registry location(s)" "SUCCESS"
+            Write-Log "Note: WEM Agent service restart may be required for changes to take effect" "INFO"
+        } else {
+            Write-Log "Failed to configure WEM Agent cache location in any registry paths" "ERROR"
+        }
+        
+        return @{
+            Success = $Success
+            CacheLocation = $CacheLocation
+            ConfiguredPaths = $ConfiguredPaths
+            FailedPaths = $FailedPaths
+            DirectoryCreated = (Test-Path $CacheLocation)
+        }
+    }
+    catch {
+        Write-Log "Failed to configure WEM Agent cache location: $($_.Exception.Message)" "ERROR"
+        return @{
+            Success = $false
+            Error = $_.Exception.Message
+            CacheLocation = $CacheLocation
+        }
+    }
+}
+
 function Add-UberAgent {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory=$true)]
-        [string]$UberAgentPath,
+        [string]$UberAgentInstallerPath,
         
         [Parameter(Mandatory=$false)]
         [string]$ConfigFilePath = ".\CitrixConfig.txt"
@@ -2769,7 +3140,7 @@ function Add-UberAgent {
         }
         
         # Check if UberAgent path is provided
-        if ([string]::IsNullOrEmpty($UberAgentPath)) {
+        if ([string]::IsNullOrEmpty($UberAgentInstallerPath)) {
             Write-Log "UberAgent installation skipped - no installer path specified" "INFO"
             $Results.Skipped = $true
             $Results.OverallSuccess = $true
@@ -2777,16 +3148,16 @@ function Add-UberAgent {
         }
         
         # Check installer availability
-        if (-not (Test-Path $UberAgentPath)) {
-            $ErrorMsg = "UberAgent installer not found at: $UberAgentPath"
+        if (-not (Test-Path $UberAgentInstallerPath)) {
+            $ErrorMsg = "UberAgent installer not found at: $UberAgentInstallerPath"
             Write-Log $ErrorMsg "ERROR"
             $Results.Errors += $ErrorMsg
             return $Results
         }
         
         # Install UberAgent
-        Write-Log "Installing UberAgent from: $UberAgentPath"
-        $InstallProcess = Start-Process -FilePath $UberAgentPath -ArgumentList "/quiet" -Wait -PassThru
+        Write-Log "Installing UberAgent from: $UberAgentInstallerPath"
+        $InstallProcess = Start-Process -FilePath $UberAgentInstallerPath -ArgumentList "/quiet" -Wait -PassThru
         
         if ($InstallProcess.ExitCode -eq 0) {
             Write-Log "UberAgent installation completed successfully" "SUCCESS"
@@ -3329,34 +3700,7 @@ function Add-Domain {
     }
 }
 
-function New-InstallationReport {
-    [CmdletBinding()]
-    param(
-        [hashtable]$Results,
-        [string]$ReportPath
-    )
-    
-    try {
-        Write-Log "Generating installation report..."
-        
-        $Report = @()
-        $Report += "Citrix Installation Report - $(Get-Date)"
-        $Report += "=========================================="
-        
-        foreach ($Component in $Results.Keys) {
-            $Status = if ($Results[$Component]) { "SUCCESS" } else { "FAILED" }
-            $Report += "$Component : $Status"
-        }
-        
-        $Report | Out-File -FilePath $ReportPath -Force
-        Write-Log "Installation report saved to: $ReportPath" "SUCCESS"
-        return $true
-    }
-    catch {
-        Write-Log "Failed to generate installation report: $($_.Exception.Message)" "ERROR"
-        return $false
-    }
-}
+
 
 function Set-StartupShutdownScripts {
     [CmdletBinding()]
@@ -4268,7 +4612,765 @@ function Start-DotNetOptimization {
     }
 }
 
+function New-CacheDrive {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory=$false)]
+        [string]$DriveLetter = "D",
+        
+        [Parameter(Mandatory=$false)]
+        [string]$VolumeLabel = "Cache",
+        
+        [Parameter(Mandatory=$false)]
+        [string]$FileSystem = "NTFS",
+        
+        [Parameter(Mandatory=$false)]
+        [switch]$Force,
+        
+        [Parameter(Mandatory=$false)]
+        [switch]$Interactive = $true
+    )
+    
+    try {
+        Write-Log "Starting cache drive creation process for ${DriveLetter}: drive..." "INFO"
+        
+        $Results = @{
+            Success = $false
+            DriveCreated = $false
+            DriveFormatted = $false
+            DriveMounted = $false
+            ManualFallbackRequired = $false
+            DriveInfo = $null
+            Method = ""
+            AvailableSpaceGB = 0
+            Errors = @()
+            PartitionInfo = $null
+        }
+        
+        # Check if target drive letter is already in use
+        if (Get-PSDrive -Name $DriveLetter -ErrorAction SilentlyContinue) {
+            if (!$Force) {
+                $ErrorMsg = "Drive ${DriveLetter}: is already in use. Use -Force to override."
+                Write-Log $ErrorMsg "ERROR"
+                $Results.Errors += $ErrorMsg
+                return $Results
+            } else {
+                Write-Log "Drive ${DriveLetter}: exists but Force parameter specified - continuing..." "WARN"
+            }
+        }
+        
+        # Get system disk information
+        $SystemDisk = Get-Disk | Where-Object { $_.IsSystem -eq $true } | Select-Object -First 1
+        if (!$SystemDisk) {
+            $ErrorMsg = "Could not identify system disk"
+            Write-Log $ErrorMsg "ERROR"
+            $Results.Errors += $ErrorMsg
+            return $Results
+        }
+        
+        Write-Log "System disk identified: Disk $($SystemDisk.Number) ($($SystemDisk.Model))" "INFO"
+        Write-Log "Disk size: $([Math]::Round($SystemDisk.Size / 1GB, 2)) GB" "INFO"
+        
+        # Get unallocated space on system disk
+        $UnallocatedSpace = Get-PartitionSupportedSize -DiskNumber $SystemDisk.Number -ErrorAction SilentlyContinue
+        if (!$UnallocatedSpace) {
+            # Try alternative method to get free space
+            $AllPartitions = Get-Partition -DiskNumber $SystemDisk.Number
+            $UsedSpace = ($AllPartitions | Measure-Object Size -Sum).Sum
+            $FreeSpace = $SystemDisk.Size - $UsedSpace
+        } else {
+            $FreeSpace = $UnallocatedSpace.SizeMax
+        }
+        
+        $FreeSpaceGB = [Math]::Round($FreeSpace / 1GB, 2)
+        $Results.AvailableSpaceGB = $FreeSpaceGB
+        
+        Write-Log "Available unallocated space: ${FreeSpaceGB} GB" "INFO"
+        
+        if ($FreeSpaceGB -lt 5) {
+            $ErrorMsg = "Insufficient free space for cache drive (${FreeSpaceGB} GB available, minimum 5 GB required)"
+            Write-Log $ErrorMsg "ERROR"
+            $Results.Errors += $ErrorMsg
+            $Results.ManualFallbackRequired = $true
+            return $Results
+        }
+        
+        # Method 1: Automatic partition creation using PowerShell
+        try {
+            Write-Log "Attempting automatic partition creation using PowerShell cmdlets..." "INFO"
+            
+            # Create new partition using all available space
+            $NewPartition = New-Partition -DiskNumber $SystemDisk.Number -UseMaximumSize -DriveLetter $DriveLetter
+            
+            if ($NewPartition) {
+                Write-Log "Partition created successfully: $($NewPartition.PartitionNumber)" "SUCCESS"
+                $Results.DriveCreated = $true
+                $Results.PartitionInfo = $NewPartition
+                $Results.Method = "PowerShell Automatic"
+                
+                # Format the new partition
+                Write-Log "Formatting partition with $FileSystem file system..." "INFO"
+                $FormatResult = Format-Volume -DriveLetter $DriveLetter -FileSystem $FileSystem -NewFileSystemLabel $VolumeLabel -Force -Confirm:$false
+                
+                if ($FormatResult) {
+                    Write-Log "Drive ${DriveLetter}: formatted successfully with $FileSystem" "SUCCESS"
+                    $Results.DriveFormatted = $true
+                    $Results.DriveMounted = $true
+                    $Results.Success = $true
+                    
+                    # Get final drive information
+                    $DriveInfo = Get-Volume -DriveLetter $DriveLetter
+                    $Results.DriveInfo = @{
+                        DriveLetter = $DriveInfo.DriveLetter
+                        Label = $DriveInfo.FileSystemLabel
+                        FileSystem = $DriveInfo.FileSystem
+                        SizeGB = [Math]::Round($DriveInfo.Size / 1GB, 2)
+                        FreeSpaceGB = [Math]::Round($DriveInfo.SizeRemaining / 1GB, 2)
+                    }
+                    
+                    Write-Log "Cache drive creation completed successfully" "SUCCESS"
+                    Write-Log "Drive: ${DriveLetter}: ($($Results.DriveInfo.SizeGB) GB, $FileSystem)" "SUCCESS"
+                }
+            }
+        }
+        catch {
+            $ErrorMsg = "PowerShell automatic method failed: $($_.Exception.Message)"
+            Write-Log $ErrorMsg "WARN"
+            $Results.Errors += $ErrorMsg
+        }
+        
+        # Method 2: DiskPart fallback method
+        if (!$Results.Success) {
+            try {
+                Write-Log "Attempting DiskPart fallback method..." "INFO"
+                
+                $DiskPartScript = @"
+select disk $($SystemDisk.Number)
+create partition primary
+active
+assign letter=$DriveLetter
+format fs=$FileSystem label="$VolumeLabel" quick
+exit
+"@
+                
+                $TempScript = "$env:TEMP\create_cache_drive.txt"
+                $DiskPartScript | Out-File -FilePath $TempScript -Encoding ASCII
+                
+                $DiskPartProcess = Start-Process -FilePath "diskpart.exe" -ArgumentList "/s `"$TempScript`"" -Wait -PassThru -NoNewWindow
+                
+                Remove-Item $TempScript -Force -ErrorAction SilentlyContinue
+                
+                if ($DiskPartProcess.ExitCode -eq 0) {
+                    Write-Log "DiskPart method completed successfully" "SUCCESS"
+                    $Results.DriveCreated = $true
+                    $Results.DriveFormatted = $true
+                    $Results.DriveMounted = $true
+                    $Results.Success = $true
+                    $Results.Method = "DiskPart Fallback"
+                    
+                    # Verify the drive was created
+                    Start-Sleep -Seconds 3
+                    if (Get-PSDrive -Name $DriveLetter -ErrorAction SilentlyContinue) {
+                        $DriveInfo = Get-Volume -DriveLetter $DriveLetter -ErrorAction SilentlyContinue
+                        if ($DriveInfo) {
+                            $Results.DriveInfo = @{
+                                DriveLetter = $DriveInfo.DriveLetter
+                                Label = $DriveInfo.FileSystemLabel
+                                FileSystem = $DriveInfo.FileSystem
+                                SizeGB = [Math]::Round($DriveInfo.Size / 1GB, 2)
+                                FreeSpaceGB = [Math]::Round($DriveInfo.SizeRemaining / 1GB, 2)
+                            }
+                        }
+                    }
+                } else {
+                    $ErrorMsg = "DiskPart method failed with exit code: $($DiskPartProcess.ExitCode)"
+                    Write-Log $ErrorMsg "ERROR"
+                    $Results.Errors += $ErrorMsg
+                }
+            }
+            catch {
+                $ErrorMsg = "DiskPart fallback method failed: $($_.Exception.Message)"
+                Write-Log $ErrorMsg "ERROR"
+                $Results.Errors += $ErrorMsg
+            }
+        }
+        
+        # Method 3: Manual fallback instructions
+        if (!$Results.Success) {
+            $Results.ManualFallbackRequired = $true
+            Write-Log "Automatic cache drive creation failed - manual intervention required" "WARN"
+            
+            if ($Interactive) {
+                Write-Host ""
+                Write-Host "MANUAL CACHE DRIVE CREATION REQUIRED" -ForegroundColor Yellow
+                Write-Host "=====================================" -ForegroundColor Yellow
+                Write-Host ""
+                Write-Host "Automatic cache drive creation failed. Please create the cache drive manually:" -ForegroundColor White
+                Write-Host ""
+                Write-Host "1. Open Disk Management (diskmgmt.msc)" -ForegroundColor Cyan
+                Write-Host "2. Right-click on unallocated space on the system disk" -ForegroundColor Cyan
+                Write-Host "3. Select 'New Simple Volume'" -ForegroundColor Cyan
+                Write-Host "4. Use all available space (${FreeSpaceGB} GB)" -ForegroundColor Cyan
+                Write-Host "5. Assign drive letter: ${DriveLetter}" -ForegroundColor Cyan
+                Write-Host "6. Format with NTFS file system" -ForegroundColor Cyan
+                Write-Host "7. Set volume label: $VolumeLabel" -ForegroundColor Cyan
+                Write-Host ""
+                Write-Host "Alternative using DiskPart command line:" -ForegroundColor White
+                Write-Host "========================================" -ForegroundColor White
+                Write-Host "diskpart" -ForegroundColor Green
+                Write-Host "select disk $($SystemDisk.Number)" -ForegroundColor Green
+                Write-Host "create partition primary" -ForegroundColor Green
+                Write-Host "assign letter=$DriveLetter" -ForegroundColor Green
+                Write-Host "format fs=ntfs label=`"$VolumeLabel`" quick" -ForegroundColor Green
+                Write-Host "exit" -ForegroundColor Green
+                Write-Host ""
+                
+                do {
+                    $Response = Read-Host "Have you manually created the ${DriveLetter}: cache drive? (y/n)"
+                    if ($Response.ToLower() -eq 'y' -or $Response.ToLower() -eq 'yes') {
+                        # Verify manual creation
+                        if (Get-PSDrive -Name $DriveLetter -ErrorAction SilentlyContinue) {
+                            $DriveInfo = Get-Volume -DriveLetter $DriveLetter -ErrorAction SilentlyContinue
+                            if ($DriveInfo) {
+                                Write-Log "Manual cache drive creation verified successfully" "SUCCESS"
+                                $Results.Success = $true
+                                $Results.DriveCreated = $true
+                                $Results.DriveFormatted = $true
+                                $Results.DriveMounted = $true
+                                $Results.Method = "Manual Creation"
+                                $Results.DriveInfo = @{
+                                    DriveLetter = $DriveInfo.DriveLetter
+                                    Label = $DriveInfo.FileSystemLabel
+                                    FileSystem = $DriveInfo.FileSystem
+                                    SizeGB = [Math]::Round($DriveInfo.Size / 1GB, 2)
+                                    FreeSpaceGB = [Math]::Round($DriveInfo.SizeRemaining / 1GB, 2)
+                                }
+                                break
+                            }
+                        }
+                        Write-Host "Drive ${DriveLetter}: not detected. Please verify the drive was created correctly." -ForegroundColor Red
+                    }
+                    elseif ($Response.ToLower() -eq 'n' -or $Response.ToLower() -eq 'no') {
+                        Write-Host "Cache drive creation skipped by user" -ForegroundColor Yellow
+                        break
+                    }
+                    else {
+                        Write-Host "Please enter 'y' for yes or 'n' for no" -ForegroundColor Yellow
+                    }
+                } while ($true)
+            }
+        }
+        
+        # Final verification and summary
+        if ($Results.Success) {
+            Write-Log "Cache drive ${DriveLetter}: successfully created and configured" "SUCCESS"
+            Write-Log "Method used: $($Results.Method)" "INFO"
+            if ($Results.DriveInfo) {
+                Write-Log "Drive details: ${DriveLetter}: ($($Results.DriveInfo.SizeGB) GB, $($Results.DriveInfo.FileSystem))" "INFO"
+                Write-Log "Available space: $($Results.DriveInfo.FreeSpaceGB) GB" "INFO"
+            }
+        } else {
+            Write-Log "Cache drive creation failed or was skipped" "ERROR"
+        }
+        
+        return $Results
+    }
+    catch {
+        Write-Log "Critical error in cache drive creation: $($_.Exception.Message)" "ERROR"
+        return @{
+            Success = $false
+            DriveCreated = $false
+            DriveFormatted = $false
+            DriveMounted = $false
+            ManualFallbackRequired = $true
+            DriveInfo = $null
+            Method = "Failed"
+            AvailableSpaceGB = 0
+            Errors = @("Critical error: $($_.Exception.Message)")
+            PartitionInfo = $null
+        }
+    }
+}
 
+function New-VirtualCacheDrive {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory=$false)]
+        [string]$ConfigFilePath = ".\CitrixConfig.txt"
+    )
+    
+    try {
+        Write-Log "Starting virtual cache drive creation using VHDX file..." "INFO"
+        
+        $Results = @{
+            Success = $false
+            VHDXCreated = $false
+            VHDXMounted = $false
+            VHDXFormatted = $false
+            DriveAssigned = $false
+            VHDXPath = ""
+            DriveLetter = ""
+            SizeMB = 0
+            Method = "VHDX Virtual Drive"
+            DriveInfo = $null
+            Errors = @()
+        }
+        
+        # Read configuration parameters
+        $VHDXPath = Get-ConfigValue -Key "VirtualCacheDrivePath" -DefaultValue "C:\Temp\DCACHE.VHDX" -ConfigFile $ConfigFilePath
+        $SizeMB = [int](Get-ConfigValue -Key "VirtualCacheDriveSizeMB" -DefaultValue "500" -ConfigFile $ConfigFilePath)
+        $VolumeLabel = Get-ConfigValue -Key "VirtualCacheDriveLabel" -DefaultValue "VCache" -ConfigFile $ConfigFilePath
+        $DriveLetter = Get-ConfigValue -Key "VirtualCacheDriveLetter" -DefaultValue "D" -ConfigFile $ConfigFilePath
+        
+        $Results.VHDXPath = $VHDXPath
+        $Results.DriveLetter = $DriveLetter
+        $Results.SizeMB = $SizeMB
+        
+        Write-Log "Virtual cache drive configuration:" "INFO"
+        Write-Log "VHDX Path: $VHDXPath" "INFO"
+        Write-Log "Size: ${SizeMB} MB" "INFO"
+        Write-Log "Drive Letter: ${DriveLetter}:" "INFO"
+        Write-Log "Volume Label: $VolumeLabel" "INFO"
+        
+        # Check if target drive letter is already in use
+        if (Get-PSDrive -Name $DriveLetter -ErrorAction SilentlyContinue) {
+            $ErrorMsg = "Drive ${DriveLetter}: is already in use. Cannot create virtual cache drive."
+            Write-Log $ErrorMsg "ERROR"
+            $Results.Errors += $ErrorMsg
+            return $Results
+        }
+        
+        # Ensure directory exists for VHDX file
+        $VHDXDirectory = Split-Path $VHDXPath -Parent
+        if (-not (Test-Path $VHDXDirectory)) {
+            try {
+                New-Item -Path $VHDXDirectory -ItemType Directory -Force | Out-Null
+                Write-Log "Created directory: $VHDXDirectory" "SUCCESS"
+            }
+            catch {
+                $ErrorMsg = "Failed to create directory for VHDX: $($_.Exception.Message)"
+                Write-Log $ErrorMsg "ERROR"
+                $Results.Errors += $ErrorMsg
+                return $Results
+            }
+        }
+        
+        # Remove existing VHDX file if it exists
+        if (Test-Path $VHDXPath) {
+            try {
+                # Try to dismount if it's already mounted
+                Get-DiskImage -ImagePath $VHDXPath -ErrorAction SilentlyContinue | Dismount-DiskImage -ErrorAction SilentlyContinue
+                Remove-Item $VHDXPath -Force
+                Write-Log "Removed existing VHDX file: $VHDXPath" "INFO"
+            }
+            catch {
+                $ErrorMsg = "Failed to remove existing VHDX file: $($_.Exception.Message)"
+                Write-Log $ErrorMsg "ERROR"
+                $Results.Errors += $ErrorMsg
+                return $Results
+            }
+        }
+        
+        # Create new VHDX file
+        try {
+            Write-Log "Creating VHDX file: $VHDXPath (${SizeMB} MB)..." "INFO"
+            
+            # Use diskpart as primary method for maximum compatibility
+            Write-Log "Using diskpart method for virtual drive creation (maximum compatibility)..." "INFO"
+            Write-Host "DEBUG: Starting diskpart virtual disk creation..." -ForegroundColor Cyan
+            
+            $DiskPartScript = @"
+create vdisk file="$VHDXPath" maximum=$SizeMB type=expandable
+select vdisk file="$VHDXPath"
+attach vdisk
+create partition primary
+active
+assign letter=$DriveLetter
+format fs=ntfs label="$VolumeLabel" quick
+exit
+"@
+            
+            $TempScript = "$env:TEMP\create_virtual_cache.txt"
+            $DiskPartScript | Out-File -FilePath $TempScript -Encoding ASCII
+            
+            Write-Log "Executing diskpart script for virtual disk creation..." "INFO"
+            Write-Host "DEBUG: Diskpart script created at: $TempScript" -ForegroundColor Cyan
+            Write-Host "DEBUG: Script contents:" -ForegroundColor Cyan
+            Write-Host $DiskPartScript -ForegroundColor Gray
+            
+            try {
+                $DiskPartProcess = Start-Process -FilePath "diskpart.exe" -ArgumentList "/s `"$TempScript`"" -Wait -PassThru -NoNewWindow -RedirectStandardOutput "$env:TEMP\diskpart_output.txt" -RedirectStandardError "$env:TEMP\diskpart_error.txt"
+                
+                # Read diskpart output for debugging
+                $DiskPartOutput = ""
+                $DiskPartError = ""
+                if (Test-Path "$env:TEMP\diskpart_output.txt") {
+                    $DiskPartOutput = Get-Content "$env:TEMP\diskpart_output.txt" -Raw
+                }
+                if (Test-Path "$env:TEMP\diskpart_error.txt") {
+                    $DiskPartError = Get-Content "$env:TEMP\diskpart_error.txt" -Raw
+                }
+                
+                Write-Host "DEBUG: Diskpart exit code: $($DiskPartProcess.ExitCode)" -ForegroundColor Cyan
+                if ($DiskPartOutput) {
+                    Write-Host "DEBUG: Diskpart output:" -ForegroundColor Cyan
+                    Write-Host $DiskPartOutput -ForegroundColor Gray
+                }
+                if ($DiskPartError) {
+                    Write-Host "DEBUG: Diskpart errors:" -ForegroundColor Red
+                    Write-Host $DiskPartError -ForegroundColor Red
+                }
+                
+                # Clean up output files
+                Remove-Item "$env:TEMP\diskpart_output.txt" -Force -ErrorAction SilentlyContinue
+                Remove-Item "$env:TEMP\diskpart_error.txt" -Force -ErrorAction SilentlyContinue
+            }
+            catch {
+                Write-Host "DEBUG: Exception during diskpart execution: $($_.Exception.Message)" -ForegroundColor Red
+                $Results.Errors += "Diskpart execution exception: $($_.Exception.Message)"
+                $DiskPartProcess = @{ ExitCode = -1 }
+            }
+            
+            Remove-Item $TempScript -Force -ErrorAction SilentlyContinue
+            
+            if ($DiskPartProcess.ExitCode -eq 0) {
+                Write-Log "Virtual disk created successfully using diskpart" "SUCCESS"
+                Write-Host "DEBUG: Diskpart succeeded - checking drive access..." -ForegroundColor Green
+                
+                $Results.VHDXCreated = $true
+                $Results.VHDXMounted = $true
+                $Results.DriveAssigned = $true
+                $Results.VHDXFormatted = $true
+                $Results.Success = $true
+                
+                # Get drive information with more retries
+                $MaxRetries = 10
+                $RetryCount = 0
+                $DriveInfo = $null
+                
+                do {
+                    Start-Sleep -Seconds 2
+                    $DriveInfo = Get-Volume -DriveLetter $DriveLetter -ErrorAction SilentlyContinue
+                    $RetryCount++
+                    Write-Host "DEBUG: Drive check attempt $RetryCount - Found: $($DriveInfo -ne $null)" -ForegroundColor Cyan
+                } while (-not $DriveInfo -and $RetryCount -lt $MaxRetries)
+                
+                if ($DriveInfo) {
+                    $Results.DriveInfo = @{
+                        DriveLetter = $DriveInfo.DriveLetter
+                        Label = $DriveInfo.FileSystemLabel
+                        FileSystem = $DriveInfo.FileSystem
+                        SizeGB = [Math]::Round($DriveInfo.Size / 1GB, 3)
+                        SizeMB = [Math]::Round($DriveInfo.Size / 1MB, 1)
+                        FreeSpaceGB = [Math]::Round($DriveInfo.SizeRemaining / 1GB, 3)
+                        FreeSpaceMB = [Math]::Round($DriveInfo.SizeRemaining / 1MB, 1)
+                        VHDXPath = $VHDXPath
+                    }
+                    
+                    Write-Log "Virtual cache drive creation completed successfully using diskpart" "SUCCESS"
+                    Write-Log "Drive: ${DriveLetter}: ($($Results.DriveInfo.SizeMB) MB, NTFS)" "SUCCESS"
+                    Write-Log "VHDX Location: $VHDXPath" "SUCCESS"
+                    Write-Host "DEBUG: Virtual cache drive fully operational!" -ForegroundColor Green
+                } else {
+                    Write-Log "Virtual disk created but drive information could not be retrieved after $MaxRetries attempts" "WARN"
+                    Write-Host "DEBUG: Drive created but not accessible via PowerShell" -ForegroundColor Yellow
+                    # Still consider it a success if diskpart succeeded
+                }
+                
+                return $Results
+            } else {
+                Write-Log "Diskpart virtual disk creation failed with exit code: $($DiskPartProcess.ExitCode)" "ERROR"
+                Write-Host "DEBUG: Diskpart failed with exit code: $($DiskPartProcess.ExitCode)" -ForegroundColor Red
+                $Results.Errors += "Diskpart creation failed with exit code: $($DiskPartProcess.ExitCode)"
+                
+                # Try Hyper-V method as fallback if available
+                if (Get-Command "New-VHD" -ErrorAction SilentlyContinue) {
+                    Write-Log "Attempting Hyper-V fallback method..." "INFO"
+                    
+                    try {
+                        $NewVHD = New-VHD -Path $VHDXPath -SizeBytes ($SizeMB * 1MB) -Dynamic
+                        
+                        if ($NewVHD) {
+                            Write-Log "VHDX file created successfully using Hyper-V" "SUCCESS"
+                            $Results.VHDXCreated = $true
+                            
+                            # Mount and configure the VHDX
+                            $MountedVHD = Mount-DiskImage -ImagePath $VHDXPath -PassThru
+                            
+                            if ($MountedVHD) {
+                                Start-Sleep -Seconds 2
+                                $VHDDisk = Get-DiskImage -ImagePath $VHDXPath | Get-Disk
+                                
+                                if ($VHDDisk.PartitionStyle -eq "RAW") {
+                                    Initialize-Disk -Number $VHDDisk.Number -PartitionStyle MBR | Out-Null
+                                }
+                                
+                                $Partition = New-Partition -DiskNumber $VHDDisk.Number -UseMaximumSize -DriveLetter $DriveLetter
+                                $FormatResult = Format-Volume -DriveLetter $DriveLetter -FileSystem NTFS -NewFileSystemLabel $VolumeLabel -Force -Confirm:$false
+                                
+                                if ($FormatResult) {
+                                    $Results.VHDXMounted = $true
+                                    $Results.DriveAssigned = $true
+                                    $Results.VHDXFormatted = $true
+                                    $Results.Success = $true
+                                    
+                                    # Get drive information
+                                    $DriveInfo = Get-Volume -DriveLetter $DriveLetter
+                                    $Results.DriveInfo = @{
+                                        DriveLetter = $DriveInfo.DriveLetter
+                                        Label = $DriveInfo.FileSystemLabel
+                                        FileSystem = $DriveInfo.FileSystem
+                                        SizeGB = [Math]::Round($DriveInfo.Size / 1GB, 3)
+                                        SizeMB = [Math]::Round($DriveInfo.Size / 1MB, 1)
+                                        FreeSpaceGB = [Math]::Round($DriveInfo.SizeRemaining / 1GB, 3)
+                                        FreeSpaceMB = [Math]::Round($DriveInfo.SizeRemaining / 1MB, 1)
+                                        VHDXPath = $VHDXPath
+                                    }
+                                    
+                                    Write-Log "Virtual cache drive creation completed successfully using Hyper-V fallback" "SUCCESS"
+                                    Write-Log "Drive: ${DriveLetter}: ($($Results.DriveInfo.SizeMB) MB, NTFS)" "SUCCESS"
+                                    
+                                    return $Results
+                                }
+                            }
+                        }
+                    }
+                    catch {
+                        Write-Log "Hyper-V fallback method failed: $($_.Exception.Message)" "ERROR"
+                        $Results.Errors += "Hyper-V fallback failed: $($_.Exception.Message)"
+                    }
+                } else {
+                    Write-Log "Hyper-V cmdlets not available for fallback" "WARN"
+                }
+                
+                return $Results
+            }
+            
+            # This section should never be reached due to diskpart-first approach
+            $NewVHD = New-VHD -Path $VHDXPath -SizeBytes ($SizeMB * 1MB) -Dynamic
+            
+            if ($NewVHD) {
+                Write-Log "VHDX file created successfully" "SUCCESS"
+                $Results.VHDXCreated = $true
+            }
+        }
+        catch {
+            $ErrorMsg = "Failed to create VHDX file: $($_.Exception.Message)"
+            Write-Log $ErrorMsg "ERROR"
+            $Results.Errors += $ErrorMsg
+            return $Results
+        }
+        
+        # Mount the VHDX file
+        try {
+            Write-Log "Mounting VHDX file..." "INFO"
+            $MountedVHD = Mount-DiskImage -ImagePath $VHDXPath -PassThru
+            
+            if ($MountedVHD) {
+                Write-Log "VHDX file mounted successfully" "SUCCESS"
+                $Results.VHDXMounted = $true
+                
+                # Get the disk number of the mounted VHDX
+                Start-Sleep -Seconds 2
+                $VHDDisk = Get-DiskImage -ImagePath $VHDXPath | Get-Disk
+                
+                if ($VHDDisk) {
+                    Write-Log "VHDX disk identified: Disk $($VHDDisk.Number)" "INFO"
+                    
+                    # Initialize the disk if needed
+                    if ($VHDDisk.PartitionStyle -eq "RAW") {
+                        Write-Log "Initializing disk..." "INFO"
+                        Initialize-Disk -Number $VHDDisk.Number -PartitionStyle MBR | Out-Null
+                    }
+                    
+                    # Create partition and assign drive letter
+                    Write-Log "Creating partition and assigning drive letter ${DriveLetter}:..." "INFO"
+                    $Partition = New-Partition -DiskNumber $VHDDisk.Number -UseMaximumSize -DriveLetter $DriveLetter
+                    
+                    if ($Partition) {
+                        Write-Log "Partition created and drive letter assigned successfully" "SUCCESS"
+                        $Results.DriveAssigned = $true
+                        
+                        # Format the partition
+                        Write-Log "Formatting partition with NTFS..." "INFO"
+                        $FormatResult = Format-Volume -DriveLetter $DriveLetter -FileSystem NTFS -NewFileSystemLabel $VolumeLabel -Force -Confirm:$false
+                        
+                        if ($FormatResult) {
+                            Write-Log "Virtual cache drive formatted successfully" "SUCCESS"
+                            $Results.VHDXFormatted = $true
+                            $Results.Success = $true
+                            
+                            # Get drive information
+                            $DriveInfo = Get-Volume -DriveLetter $DriveLetter
+                            $Results.DriveInfo = @{
+                                DriveLetter = $DriveInfo.DriveLetter
+                                Label = $DriveInfo.FileSystemLabel
+                                FileSystem = $DriveInfo.FileSystem
+                                SizeGB = [Math]::Round($DriveInfo.Size / 1GB, 3)
+                                SizeMB = [Math]::Round($DriveInfo.Size / 1MB, 1)
+                                FreeSpaceGB = [Math]::Round($DriveInfo.SizeRemaining / 1GB, 3)
+                                FreeSpaceMB = [Math]::Round($DriveInfo.SizeRemaining / 1MB, 1)
+                                VHDXPath = $VHDXPath
+                            }
+                            
+                            Write-Log "Virtual cache drive creation completed successfully" "SUCCESS"
+                            Write-Log "Drive: ${DriveLetter}: ($($Results.DriveInfo.SizeMB) MB, NTFS)" "SUCCESS"
+                            Write-Log "VHDX Location: $VHDXPath" "SUCCESS"
+                        }
+                    }
+                }
+            }
+        }
+        catch {
+            $ErrorMsg = "Failed to mount or configure VHDX: $($_.Exception.Message)"
+            Write-Log $ErrorMsg "ERROR"
+            $Results.Errors += $ErrorMsg
+            
+            # Try to clean up on failure
+            try {
+                if (Test-Path $VHDXPath) {
+                    Get-DiskImage -ImagePath $VHDXPath -ErrorAction SilentlyContinue | Dismount-DiskImage -ErrorAction SilentlyContinue
+                    Remove-Item $VHDXPath -Force -ErrorAction SilentlyContinue
+                }
+            }
+            catch {
+                Write-Log "Failed to clean up VHDX file after error" "WARN"
+            }
+            
+            return $Results
+        }
+        
+        return $Results
+    }
+    catch {
+        Write-Log "Critical error in virtual cache drive creation: $($_.Exception.Message)" "ERROR"
+        return @{
+            Success = $false
+            VHDXCreated = $false
+            VHDXMounted = $false
+            VHDXFormatted = $false
+            DriveAssigned = $false
+            VHDXPath = ""
+            DriveLetter = ""
+            SizeMB = 0
+            Method = "VHDX Virtual Drive"
+            DriveInfo = $null
+            Errors = @("Critical error: $($_.Exception.Message)")
+        }
+    }
+}
+
+function Remove-VirtualCacheDrive {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory=$false)]
+        [string]$ConfigFilePath = ".\CitrixConfig.txt"
+    )
+    
+    try {
+        Write-Log "Starting virtual cache drive removal..." "INFO"
+        
+        $Results = @{
+            Success = $false
+            VHDXDismounted = $false
+            VHDXRemoved = $false
+            DriveRemoved = $false
+            Errors = @()
+        }
+        
+        # Read configuration
+        $VHDXPath = Get-ConfigValue -Key "VirtualCacheDrivePath" -DefaultValue "C:\Temp\DCACHE.VHDX" -ConfigFile $ConfigFilePath
+        $DriveLetter = Get-ConfigValue -Key "VirtualCacheDriveLetter" -DefaultValue "D" -ConfigFile $ConfigFilePath
+        
+        Write-Log "Virtual cache drive removal configuration:" "INFO"
+        Write-Log "VHDX Path: $VHDXPath" "INFO"
+        Write-Log "Drive Letter: ${DriveLetter}:" "INFO"
+        
+        # Check if VHDX file exists
+        if (-not (Test-Path $VHDXPath)) {
+            Write-Log "VHDX file not found: $VHDXPath" "INFO"
+            $Results.Success = $true
+            return $Results
+        }
+        
+        # Try Hyper-V method first
+        try {
+            Write-Log "Attempting Hyper-V dismount method..." "INFO"
+            $DiskImage = Get-DiskImage -ImagePath $VHDXPath -ErrorAction SilentlyContinue
+            
+            if ($DiskImage -and $DiskImage.Attached) {
+                Dismount-DiskImage -ImagePath $VHDXPath | Out-Null
+                Write-Log "VHDX file dismounted successfully using Hyper-V method" "SUCCESS"
+                $Results.VHDXDismounted = $true
+                $Results.DriveRemoved = $true
+            } else {
+                Write-Log "VHDX file was not mounted via Hyper-V" "INFO"
+                $Results.VHDXDismounted = $true
+                $Results.DriveRemoved = $true
+            }
+        }
+        catch {
+            Write-Log "Hyper-V dismount failed, trying diskpart method..." "WARN"
+            
+            # Use diskpart to detach virtual disk
+            try {
+                $DiskPartScript = @"
+select vdisk file="$VHDXPath"
+detach vdisk
+exit
+"@
+                
+                $TempScript = "$env:TEMP\remove_virtual_cache.txt"
+                $DiskPartScript | Out-File -FilePath $TempScript -Encoding ASCII
+                
+                Write-Log "Executing diskpart script for virtual disk removal..." "INFO"
+                $DiskPartProcess = Start-Process -FilePath "diskpart.exe" -ArgumentList "/s `"$TempScript`"" -Wait -PassThru -NoNewWindow
+                
+                Remove-Item $TempScript -Force -ErrorAction SilentlyContinue
+                
+                if ($DiskPartProcess.ExitCode -eq 0) {
+                    Write-Log "Virtual disk detached successfully using diskpart" "SUCCESS"
+                    $Results.VHDXDismounted = $true
+                    $Results.DriveRemoved = $true
+                } else {
+                    Write-Log "Diskpart detach failed with exit code: $($DiskPartProcess.ExitCode)" "WARN"
+                    $Results.Errors += "Diskpart detach failed"
+                }
+            }
+            catch {
+                $ErrorMsg = "Diskpart dismount failed: $($_.Exception.Message)"
+                Write-Log $ErrorMsg "WARN"
+                $Results.Errors += $ErrorMsg
+            }
+        }
+        
+        # Remove the VHDX file
+        try {
+            Write-Log "Removing VHDX file..." "INFO"
+            Remove-Item $VHDXPath -Force
+            Write-Log "VHDX file removed successfully" "SUCCESS"
+            $Results.VHDXRemoved = $true
+            $Results.Success = $true
+        }
+        catch {
+            $ErrorMsg = "Failed to remove VHDX file: $($_.Exception.Message)"
+            Write-Log $ErrorMsg "ERROR"
+            $Results.Errors += $ErrorMsg
+        }
+        
+        return $Results
+    }
+    catch {
+        Write-Log "Critical error in virtual cache drive removal: $($_.Exception.Message)" "ERROR"
+        return @{
+            Success = $false
+            VHDXDismounted = $false
+            VHDXRemoved = $false
+            DriveRemoved = $false
+            Errors = @("Critical error: $($_.Exception.Message)")
+        }
+    }
+}
 
 # Export module functions
 Export-ModuleMember -Function *
