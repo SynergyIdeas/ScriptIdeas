@@ -129,9 +129,9 @@ function Get-ConfigValue {
             return $DefaultValue
         }
         
+        # First pass: collect all config values for variable expansion
         $ConfigContent = Get-Content $ConfigFile
-        $Value = $DefaultValue
-        $KeyFound = $false
+        $ConfigData = @{}
         
         foreach ($Line in $ConfigContent) {
             if ($Line -and -not $Line.StartsWith("#") -and $Line.Contains("=")) {
@@ -139,19 +139,44 @@ function Get-ConfigValue {
                 if ($Parts.Count -eq 2) {
                     $ConfigKey = $Parts[0].Trim()
                     $ConfigValue = $Parts[1].Trim()
-                    
-                    if ($ConfigKey -eq $Key) {
-                        # Convert string values to appropriate types
-                        if ($ConfigValue -eq "true") { $Value = $true }
-                        elseif ($ConfigValue -eq "false") { $Value = $false }
-                        elseif ($ConfigValue -match '^\d+$') { $Value = [int]$ConfigValue }
-                        else { $Value = $ConfigValue }
-                        
-                        $KeyFound = $true
-                        break
-                    }
+                    $ConfigData[$ConfigKey] = $ConfigValue
                 }
             }
+        }
+        
+        # Second pass: find the requested key and expand variables
+        $Value = $DefaultValue
+        $KeyFound = $false
+        
+        if ($ConfigData.ContainsKey($Key)) {
+            $Value = $ConfigData[$Key]
+            $KeyFound = $true
+            
+            # Handle variable expansion for %VariableName% patterns
+            while ($Value -match '%([^%]+)%') {
+                $VarName = $Matches[1]
+                $VarValue = $null
+                
+                # Check if it's another config key
+                if ($ConfigData.ContainsKey($VarName)) {
+                    $VarValue = $ConfigData[$VarName]
+                } else {
+                    # Check environment variables
+                    $VarValue = [Environment]::GetEnvironmentVariable($VarName)
+                }
+                
+                if ($VarValue) {
+                    $Value = $Value -replace "%$VarName%", $VarValue
+                } else {
+                    # Remove unresolved variables
+                    $Value = $Value -replace "%$VarName%", ""
+                }
+            }
+            
+            # Convert string values to appropriate types
+            if ($Value -eq "true") { $Value = $true }
+            elseif ($Value -eq "false") { $Value = $false }
+            elseif ($Value -match '^\d+$') { $Value = [int]$Value }
         }
         
         if ($ShowStatus) {
