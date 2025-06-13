@@ -1,0 +1,319 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Citrix Installation Report - Stage 1</title>
+<style>
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap");
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: "Inter", sans-serif; background: #f8fafc; color: #1e293b; line-height: 1.5; }
+.header { background: white; border-bottom: 1px solid #e2e8f0; padding: 20px 32px; display: flex; justify-content: space-between; align-items: center; }
+.header-left { display: flex; align-items: center; }
+.logo { width: 48px; height: 48px; background: #3C1053; border-radius: 12px; display: flex; align-items: center; justify-content: center; color: white; font-weight: 700; font-size: 20px; margin-right: 20px; }
+.header-title { font-size: 24px; font-weight: 600; color: #1e293b; margin: 0; }
+.header-subtitle { font-size: 14px; color: #64748b; margin: 4px 0 0 0; }
+.stage-badge { background: #3C1053; color: white; padding: 8px 16px; border-radius: 20px; font-size: 14px; font-weight: 500; }
+.system-info { display: flex; gap: 24px; margin-top: 8px; }
+.info-item { font-size: 12px; color: #64748b; }
+.container { max-width: 1400px; margin: 0 auto; padding: 32px; }
+.dashboard-grid { display: grid; grid-template-columns: 2fr 1fr; gap: 32px; margin-bottom: 32px; }
+.chart-section { display: grid; gap: 24px; }
+.sidebar-section { display: grid; gap: 24px; }
+.card { background: white; border-radius: 12px; border: 1px solid #e2e8f0; padding: 24px; }
+.card-header { display: flex; justify-content: between; align-items: center; margin-bottom: 20px; }
+.card-title { font-size: 18px; font-weight: 600; color: #1e293b; margin: 0; }
+.card-subtitle { font-size: 14px; color: #64748b; margin: 4px 0 0 0; }
+.stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 32px; }
+.stat-card { background: white; border-radius: 12px; border: 1px solid #e2e8f0; padding: 20px; text-align: center; }
+.stat-number { font-size: 32px; font-weight: 700; margin-bottom: 4px; }
+.stat-label { font-size: 14px; color: #64748b; }
+.stat-success { color: #059669; }
+.stat-error { color: #dc2626; }
+.stat-warning { color: #d97706; }
+.stat-info { color: #3C1053; }
+.progress-section { }
+.progress-item { margin-bottom: 16px; }
+.progress-header { display: flex; justify-content: space-between; margin-bottom: 8px; }
+.progress-label { font-size: 14px; font-weight: 500; color: #374151; }
+.progress-value { font-size: 14px; font-weight: 600; }
+.progress-bar { width: 100%; height: 8px; background: #f1f5f9; border-radius: 4px; overflow: hidden; }
+.progress-fill { height: 100%; border-radius: 4px; transition: width 1s ease; }
+.progress-success { background: #059669; }
+.progress-error { background: #dc2626; }
+.progress-warning { background: #d97706; }
+.gauge-container { text-align: center; padding: 20px; }
+.gauge { width: 240px; height: 140px; margin: 0 auto 16px; position: relative; }
+.gauge svg { width: 100%; height: 100%; overflow: visible; }
+.gauge-bg { fill: none; stroke: #e2e8f0; stroke-width: 16; }
+.gauge-progress { fill: none; stroke: #3C1053; stroke-width: 16; stroke-linecap: round; transition: stroke-dashoffset 1s ease; }
+.gauge-text { font-size: 24px; font-weight: 700; color: #1e293b; }
+.gauge-label { font-size: 14px; color: #64748b; }
+.components-list { }
+.component-item { display: flex; align-items: center; padding: 12px 0; border-bottom: 1px solid #f1f5f9; }
+.component-item:last-child { border-bottom: none; }
+.component-status { width: 12px; height: 12px; border-radius: 50%; margin-right: 12px; }
+.status-success { background: #059669; }
+.status-error { background: #dc2626; }
+.status-warning { background: #d97706; }
+.component-name { flex: 1; font-size: 14px; font-weight: 500; color: #374151; }
+.component-result { font-size: 12px; color: #64748b; }
+.chart-container { margin-top: 20px; }
+.chart-bar-item { margin-bottom: 12px; }
+.chart-bar-header { display: flex; justify-content: space-between; margin-bottom: 4px; }
+.chart-bar-label { font-size: 14px; color: #374151; }
+.chart-bar-value { font-size: 14px; font-weight: 600; color: #1e293b; }
+.chart-bar { width: 100%; height: 6px; background: #f1f5f9; border-radius: 3px; overflow: hidden; }
+.chart-bar-fill { height: 100%; border-radius: 3px; }
+.numbered-list { }
+.list-item { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; }
+.list-name { font-size: 14px; color: #374151; }
+.list-number { font-size: 14px; font-weight: 600; color: #1e293b; }
+</style>
+</head>
+<body>
+<div class="header">
+<div class="header-left">
+<div class="logo">C</div>
+<div>
+<div class="header-title">Citrix Installation Dashboard</div>
+<div class="header-subtitle">Platform deployment analytics and monitoring</div>
+<div class="system-info">
+<span class='info-item'>Computer: DESKTOP-CKSIRRQ</span>
+<span class='info-item'>User: DellXPS</span>
+<span class='info-item'>Generated: 2025-06-13 11:03:47</span>
+<span class='info-item'>OS: Microsoft Windows 11 Pro</span>
+<span class='info-item'>Memory: 15.81 GB</span>
+</div>
+</div>
+</div>
+<div class='stage-badge'>STAGE 1</div>
+</div>
+<div class="container">
+<div class="stats-grid">
+<div class="stat-card">
+<div class='stat-number stat-success'>2</div>
+<div class="stat-label">Successful</div>
+</div>
+<div class="stat-card">
+<div class='stat-number stat-error'>4</div>
+<div class="stat-label">Failed</div>
+</div>
+<div class="stat-card">
+<div class='stat-number stat-warning'>6</div>
+<div class="stat-label">Skipped</div>
+</div>
+<div class="stat-card">
+<div class='stat-number stat-info'>16.7%</div>
+<div class="stat-label">Success Rate</div>
+</div>
+</div>
+<div class="dashboard-grid">
+<div class="chart-section">
+<div class="card">
+<div class="card-header">
+<div>
+<div class="card-title">Component Installation Progress</div>
+<div class="card-subtitle">Real-time installation status by component</div>
+</div>
+</div>
+<div class="progress-section">
+<div class="progress-item">
+<div class="progress-header">
+<div class='progress-label'>Scripts</div>
+<div class='progress-value'>Completed</div>
+</div>
+<div class="progress-bar">
+<div class='progress-fill progress-success' style='width: 100%;'></div>
+</div>
+</div>
+<div class="progress-item">
+<div class="progress-header">
+<div class='progress-label'>CacheDrive</div>
+<div class='progress-value'>Completed</div>
+</div>
+<div class="progress-bar">
+<div class='progress-fill progress-success' style='width: 100%;'></div>
+</div>
+</div>
+<div class="progress-item">
+<div class="progress-header">
+<div class='progress-label'>TADDMSCMConfig</div>
+<div class='progress-value'>Skipped</div>
+</div>
+<div class="progress-bar">
+<div class='progress-fill progress-warning' style='width: 0%;'></div>
+</div>
+</div>
+<div class="progress-item">
+<div class="progress-header">
+<div class='progress-label'>VDA</div>
+<div class='progress-value'>Failed</div>
+</div>
+<div class="progress-bar">
+<div class='progress-fill progress-error' style='width: 25%;'></div>
+</div>
+</div>
+<div class="progress-item">
+<div class="progress-header">
+<div class='progress-label'>CitrixOptimizer</div>
+<div class='progress-value'>Failed</div>
+</div>
+<div class="progress-bar">
+<div class='progress-fill progress-error' style='width: 25%;'></div>
+</div>
+</div>
+<div class="progress-item">
+<div class="progress-header">
+<div class='progress-label'>UberAgent</div>
+<div class='progress-value'>Skipped</div>
+</div>
+<div class="progress-bar">
+<div class='progress-fill progress-warning' style='width: 0%;'></div>
+</div>
+</div>
+<div class="progress-item">
+<div class="progress-header">
+<div class='progress-label'>DomainJoin</div>
+<div class='progress-value'>Skipped</div>
+</div>
+<div class="progress-bar">
+<div class='progress-fill progress-warning' style='width: 0%;'></div>
+</div>
+</div>
+<div class="progress-item">
+<div class="progress-header">
+<div class='progress-label'>CitrixServicesDisabled</div>
+<div class='progress-value'>Failed</div>
+</div>
+<div class="progress-bar">
+<div class='progress-fill progress-error' style='width: 25%;'></div>
+</div>
+</div>
+<div class="progress-item">
+<div class="progress-header">
+<div class='progress-label'>PVS</div>
+<div class='progress-value'>Failed</div>
+</div>
+<div class="progress-bar">
+<div class='progress-fill progress-error' style='width: 25%;'></div>
+</div>
+</div>
+<div class="progress-item">
+<div class="progress-header">
+<div class='progress-label'>TADDM</div>
+<div class='progress-value'>Skipped</div>
+</div>
+<div class="progress-bar">
+<div class='progress-fill progress-warning' style='width: 0%;'></div>
+</div>
+</div>
+<div class="progress-item">
+<div class="progress-header">
+<div class='progress-label'>ScriptConfiguration</div>
+<div class='progress-value'>Skipped</div>
+</div>
+<div class="progress-bar">
+<div class='progress-fill progress-warning' style='width: 0%;'></div>
+</div>
+</div>
+<div class="progress-item">
+<div class="progress-header">
+<div class='progress-label'>WEM</div>
+<div class='progress-value'>Skipped</div>
+</div>
+<div class="progress-bar">
+<div class='progress-fill progress-warning' style='width: 0%;'></div>
+</div>
+</div>
+</div>
+</div>
+</div>
+<div class="sidebar-section">
+<div class="card">
+<div class="card-header">
+<div class="card-title">Overall Success Rate</div>
+</div>
+<div class="gauge-container">
+<div class="gauge">
+<svg viewBox="0 0 140 80">
+<path class="gauge-bg" d="M 20 70 A 50 50 0 0 1 120 70" stroke-dasharray="157" stroke-dashoffset="0"></path>
+<path class='gauge-progress' d='M 20 70 A 50 50 0 0 1 120 70' stroke-dasharray='157' stroke-dashoffset='130.8'></path>
+</svg>
+</div>
+<div class='gauge-text'>16.7%</div>
+<div class="gauge-label">Installation Success</div>
+</div>
+</div>
+<div class="card">
+<div class="card-header">
+<div class="card-title">Installation Components</div>
+</div>
+<div class="components-list">
+<div class="component-item">
+<div class='component-status status-success'></div>
+<div class='component-name'>Scripts</div>
+<div class='component-result'>Success</div>
+</div>
+<div class="component-item">
+<div class='component-status status-success'></div>
+<div class='component-name'>CacheDrive</div>
+<div class='component-result'>Success</div>
+</div>
+<div class="component-item">
+<div class='component-status status-warning'></div>
+<div class='component-name'>TADDMSCMConfig</div>
+<div class='component-result'>Skipped</div>
+</div>
+<div class="component-item">
+<div class='component-status status-error'></div>
+<div class='component-name'>VDA</div>
+<div class='component-result'>Failed</div>
+</div>
+<div class="component-item">
+<div class='component-status status-error'></div>
+<div class='component-name'>CitrixOptimizer</div>
+<div class='component-result'>Failed</div>
+</div>
+<div class="component-item">
+<div class='component-status status-warning'></div>
+<div class='component-name'>UberAgent</div>
+<div class='component-result'>Skipped</div>
+</div>
+<div class="component-item">
+<div class='component-status status-warning'></div>
+<div class='component-name'>DomainJoin</div>
+<div class='component-result'>Skipped</div>
+</div>
+<div class="component-item">
+<div class='component-status status-error'></div>
+<div class='component-name'>CitrixServicesDisabled</div>
+<div class='component-result'>Failed</div>
+</div>
+<div class="component-item">
+<div class='component-status status-error'></div>
+<div class='component-name'>PVS</div>
+<div class='component-result'>Failed</div>
+</div>
+<div class="component-item">
+<div class='component-status status-warning'></div>
+<div class='component-name'>TADDM</div>
+<div class='component-result'>Skipped</div>
+</div>
+<div class="component-item">
+<div class='component-status status-warning'></div>
+<div class='component-name'>ScriptConfiguration</div>
+<div class='component-result'>Skipped</div>
+</div>
+<div class="component-item">
+<div class='component-status status-warning'></div>
+<div class='component-name'>WEM</div>
+<div class='component-result'>Skipped</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+</body>
+</html>
