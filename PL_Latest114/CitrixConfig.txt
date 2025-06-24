@@ -1,0 +1,326 @@
+# ======================================================================
+# Citrix Platform Installation Configuration File
+# ======================================================================
+# This file contains all configuration parameters for the Citrix 
+# installation scripts. Modify values as needed for your environment.
+# 
+# Format: Key=Value (no spaces around =)
+# Comments start with # and are ignored
+# Environment variables can be used with %VARIABLE% syntax
+# Boolean values: true/false
+# Numeric values: integers only
+# ======================================================================
+
+# ======================
+# NETWORK SOURCE PATHS
+# ======================
+# Network paths where installation files are stored
+# These paths should be accessible from the target system during installation
+
+# Main network source directory for all deployment files
+NetworkSourcePath=\\fileserver\citrix
+
+# Network Drive Mapping Configuration (Stage 2)
+# Set to true to automatically map network drive with credential prompting
+MapNetworkDrive=true
+# Drive letter to use for network mapping (Z: recommended)
+NetworkDriveLetter=Z
+
+# Local installation directory (must be defined before use in other variables)
+LocalInstallPath=C:\Temp
+
+# ======================
+# VDA INSTALLATION
+# ======================
+# Citrix Virtual Desktop Agent configuration
+
+VDAISOSourcePath=%NetworkSourcePath%\installers\VDA\XenDesktopVDASetup_2402.iso
+VDAISOPath=%LocalInstallPath%\VDA.iso
+
+# VDA Installation Command Arguments
+VDAInstallArguments=/quiet /norestart /components VDA /masterimage
+
+# ======================
+# PVS TARGET DEVICE INSTALLATION
+# ======================
+# Provisioning Services Target Device configuration
+
+PVSISOSourcePath=%NetworkSourcePath%\installers\PVS\PVS_Device_2402.iso
+PVSISOPath=%LocalInstallPath%\PVS.iso
+
+# PVS Installation Command Arguments
+PVSInstallArguments=/S
+
+# ======================
+# WEM AGENT INSTALLATION
+# ======================
+# Workspace Environment Management Agent configuration
+
+WEMInstallerSourcePath=%NetworkSourcePath%\installers\WEM\Citrix_Workspace_Environment_Management_Agent_2402.msi
+WEMInstallerPath=%LocalInstallPath%\WEMAgent.msi
+WEMPath=%LocalInstallPath%\WEMAgent.msi
+
+# WEM Agent Cache Configuration
+WEMAgentCacheLocation=D:\WEM\Cache
+ConfigureWEMAgentCache=true
+
+# WEM Installation Command Arguments
+WEMInstallArguments=/quiet /norestart
+
+# ======================
+# UBERAGENT INSTALLATION
+# ======================
+# UberAgent monitoring and analytics configuration
+
+UberAgentInstallerSourcePath=%NetworkSourcePath%\installers\UberAgent\\uberAgent_7.0.0.msi
+UberAgentInstallerPath=%LocalInstallPath%\UberAgent.msi
+
+# UberAgent Installation Command Arguments
+UberAgentInstallArguments=/quiet /norestart ALLUSERS=1 REBOOT=ReallySuppress
+
+# UberAgent Template and Configuration Files
+UberAgentTemplatesPath=%NetworkSourcePath%\UberAgent\Templates
+UberAgentTemplatesSourcePath=%NetworkSourcePath%\UberAgent\Templates
+UberAgentTemplatesLocalPath=C:\Program Files\vast limits\uberAgent\config\templates
+
+# UberAgent Config Paths (environment detection only)
+UberAgentConfigPath=%NetworkSourcePath%\UberAgent\Config
+UberAgentConfigLocalPath=C:\Program Files\vast limits\\uberAgent\config\\uberagent.conf
+
+UberAgentLicensePath=%NetworkSourcePath%\UberAgent\License
+UberAgentLicenseSourcePath=%NetworkSourcePath%\UberAgent\uberagent.lic
+UberAgentLicenseLocalPath=C:\Program Files\vast limits\uberAgent\config\uberagent.lic
+
+# UberAgent Post-Installation Configuration
+UberAgentOutputDirectory=D:\Logs\\uberAgent\%UberAgentOutputQueueName%
+UberAgentOutputQueueName=Output Queue
+UberAgentServiceName=uberAgentsvc
+UberAgentRegistryPath=HKLM:\Software\vast limits\\uberAgent
+UberAgentTempLogPattern=uberagent*.log
+
+# UberAgent Environment-Based Configuration Selection
+# IP ranges for environment detection (CIDR notation supported)
+DevIPRanges=10.1.0.0/16,172.16.0.0/12,192.168.100.0/24
+ProdIPRanges=10.100.0.0/16,172.20.0.0/12,192.168.200.0/24
+
+# UberAgent config files for different environments
+UberAgentDevConfigSource=%NetworkSourcePath%\UberAgent\Config\dev\uberagent.conf
+UberAgentProdConfigSource=%NetworkSourcePath%\UberAgent\Config\prod\uberagent.conf
+
+# ======================
+# IBM TADDM INSTALLATION
+# ======================
+# Application Dependency Discovery Manager configuration
+
+EnableIBMTADDMInstallation=true
+TADDMPath=C:\IBM\TADDM\nonadmin_scripts\install.bat
+
+# IBM TADDM Service Control Manager Configuration
+EnableIBMTADDMSCMConfig=true
+IBMTADDMSCMPath=C:\IBM\TADDM\sc_sdset_scmanager
+IBMTADDMCurrentSDDLBat=C:\IBM\TADDM\sc_sdset_scmanager\currentsddl.bat
+IBMTADDMSCMConfigBat=C:\IBM\TADDM\sc_sdset_scmanager\sc_sdset_scmanager.bat
+
+# VDA Multiple Monitor Hook Configuration
+EnableVDAMultiMonitorHook=true
+VDALogonUIWidth=800
+VDALogonUIHeight=600
+
+# ======================
+# STARTUP/SHUTDOWN SCRIPTS
+# ======================
+# Configure startup and shutdown script management for enterprise deployment
+# Scripts are automatically selected based on detected Windows Server version
+
+# Windows Server 2019 Script Sources (network paths)
+StartupScriptsSourceWin2019=%NetworkSourcePath%\scripts\startup\win2019
+ShutdownScriptsSourceWin2019=%NetworkSourcePath%\scripts\shutdown\win2019
+
+# Windows Server 2022 Script Sources (network paths)
+StartupScriptsSourceWin2022=%NetworkSourcePath%\scripts\startup\win2022
+ShutdownScriptsSourceWin2022=%NetworkSourcePath%\scripts\shutdown\win2022
+
+# Local Destination Paths (fully configurable)
+StartupScriptsDestination=C:\Windows\System32\GroupPolicy\Machine\Scripts\Startup
+ShutdownScriptsDestination=C:\Windows\System32\GroupPolicy\Machine\Scripts\Shutdown
+
+# Stage 2 Script Network Path (for copying to LocalInstallPath)
+Stage2ScriptNetworkPath=%NetworkSourcePath%\scripts\citrix_stage2_script.ps1
+
+
+
+# ======================
+# COMPONENT INSTALLATION CONTROL
+# ======================
+# Boolean flags to control component installation
+
+InstallVDA=true
+InstallPVS=true
+InstallWEM=false
+InstallUberAgent=false
+InstallTADDM=false
+
+# ======================
+# SYSTEM CONFIGURATION
+# ======================
+# Core system configuration parameters
+
+# Cache drive configuration
+# RequireCacheDrive controls whether D: cache drive is mandatory for installation
+# Set to false to skip all cache drive validation and creation
+RequireCacheDrive=true
+CacheDriveLetter=D
+ConfigureCacheDrive=true
+
+# CD/DVD drive relocation
+CDDVMTargetDrive=Y
+RelocateCDDVDDrive=true
+
+# Pagefile configuration
+PagefileSizeGB=8
+
+# Virtual Cache Drive Options (VHDX-based cache drive alternative)
+UseVirtualCacheDrive=true
+VirtualCacheDrivePath=C:\Temp\CACHE.VHDX
+VirtualCacheDriveSizeMB=100
+VirtualCacheDriveLabel=Cache
+VirtualCacheDriveLetter=D
+
+# ======================
+# DOMAIN CONFIGURATION
+# ======================
+# Domain join configuration
+
+DomainName=domain.local
+OrganizationalUnit=OU=VDI,DC=domain,DC=local
+JoinDomain=false
+
+# DNS configuration
+DNSSuffix=domain.local
+ConfigureDNSSuffix=true
+PrimaryDNSSuffix=domain.local
+DNSSuffixSearchList=domain.local
+AppendPrimarySuffixes=true
+AppendParentSuffixes=true
+RegisterThisConnectionsAddress=true
+
+# ======================
+# PROFILE MANAGEMENT
+# ======================
+# Domain user profile cleanup for VDI template preparation
+# Set to true to remove domain user profiles during Stage 2
+EnableDomainProfileCleanup=true
+
+# ======================
+# VALIDATION AND ERROR HANDLING
+# ======================
+# Script behavior control
+
+ValidationMode=Enhanced
+ContinueOnWarnings=true
+DetailedLogging=true
+
+# ======================
+# OUTPUT PATHS CONFIGURATION
+# ======================
+# Configurable paths for logs and reports
+
+# Log file location (supports environment variables and date/time placeholders)
+# Available placeholders: %DATE%, %TIME%, %COMPUTERNAME%, %USERNAME%
+LogPath=%USERPROFILE%\Desktop\CitrixInstallation_%DATE%_%TIME%.log
+Stage1LogPath=%USERPROFILE%\Desktop\Citrix_Stage1_%DATE%_%TIME%.log
+Stage2LogPath=%USERPROFILE%\Desktop\Citrix_Stage2_%DATE%_%TIME%.log
+
+# HTML report output location
+# Reports will be saved to this directory with timestamped filenames
+ReportOutputPath=%USERPROFILE%\Desktop
+ReportFileName=Citrix_Installation_Report_Stage_%STAGE%_%DATE%_%TIME%.html
+
+# Alternative report locations (uncomment to use)
+# ReportOutputPath=C:\Temp\Reports
+# ReportOutputPath=D:\Logs\CitrixReports
+# ReportOutputPath=%NetworkSourcePath%\Reports
+
+# ======================
+# VDI OPTIMIZATION SETTINGS
+# ======================
+# All VDI optimizations handled exclusively by Citrix Optimizer
+
+RunCitrixOptimizer=true
+
+# Active Setup Components to Remove (comma-separated GUIDs)
+# Only components listed here will be deleted during Stage 2 cleanup
+# Leave empty to skip Active Setup cleanup entirely
+# Example problematic components that impact VDI performance:
+ActiveSetupComponentsToRemove=
+
+# ======================
+# CITRIX OPTIMIZER CONFIGURATION
+# ======================
+# Citrix Optimizer tool configuration for VDI template optimization
+
+CitrixOptimizerPath=%NetworkSourcePath%\tools\CitrixOptimizer\CitrixOptimizer.exe
+CitrixOptimizerTemplatesPath=%NetworkSourcePath%\tools\CitrixOptimizer\Templates
+CitrixOptimizerOutputPath=%LocalInstallPath%\CitrixOptimizer_Results
+
+# OS-specific base templates (system selects appropriate one based on detected OS)
+CitrixOptimizerTemplate=Windows_Server_2019_VDI.xml,Windows_Server_2022_VDI.xml
+
+# Additional overlay template applied to both OS versions (optional)
+# This template will be applied AFTER the OS-specific template
+CitrixOptimizerOverlayTemplate=
+
+CitrixOptimizerMode=Execute
+CitrixServicesToDisable=wuauserv
+CitrixServicesToDisableStage2=CdfSvc,BITS,TapiSrv
+
+# Additional system optimizations (Stage 2)
+
+# .NET Framework optimization
+RunDotNetOptimization=true
+
+# Event Logs cleanup
+RunEventLogsCleanup=true
+
+# Network optimizations
+DisableNetBiosOverTCP=true
+DisableNetworkOffloadParameters=true
+ConfigureSMBSettings=true
+
+# Storage optimizations
+SetCrashDumpToKernelMode=true
+
+# System optimizations
+DisableVMwareMemoryBallooning=true
+DisableRecycleBinCreation=true
+DisableQuickAccessUserFolders=true
+RemovePasswordAge=true
+ConfigurePagefile=true
+RedirectPagefileToCache=true
+RedirectEventLogsToCache=true
+RedirectUserProfilesToCache=true
+ResetRDSGracePeriod=true
+
+DisableWindowsServices=true
+
+# Cache drive redirection paths (directory names on D: drive)
+# EventLogsPath creates D:\EventLogs for Windows event log redirection
+EventLogsPath=EventLogs
+# UserProfilesPath creates D:\Profiles for user profile redirection
+UserProfilesPath=Profiles
+
+# ======================
+# STARTUP/SHUTDOWN SCRIPT CONTROL
+# ======================
+# Script deployment boolean flags
+
+DeployStartupScripts=true
+DeployShutdownScripts=true
+RegisterScriptsInGPO=true
+
+# ======================
+# SYSTEM OPTIMIZATION CONTROL
+# ======================
+# System optimization boolean flags
+
+DefragDisk=true
