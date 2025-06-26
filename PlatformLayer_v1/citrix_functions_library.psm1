@@ -10365,10 +10365,10 @@ function Configure-NTPTimeSources {
             Write-Log "Using Domain 3 NTP servers for domain: $CurrentDomain" "INFO"
         }
         else {
-            # Use default fallback NTP servers if domain not specifically configured
-            $NTPServersToUse = $Domain1NTPServers  # Use Domain 1 as fallback
-            Write-Log "Domain '$CurrentDomain' not specifically configured, using default NTP servers from Domain 1" "INFO"
-            $Results.DomainDetected = "$CurrentDomain (using default configuration)"
+            $Results.Errors += "Domain not configured for NTP: $CurrentDomain"
+            Write-Log "Domain not configured for NTP servers: $CurrentDomain" "ERROR"
+            $Results.Success = $false
+            return $Results
         }
         
         # Parse NTP servers list

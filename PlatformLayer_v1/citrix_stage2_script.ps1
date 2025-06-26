@@ -1661,13 +1661,13 @@ try {
                     $isSkipped = $true
                 }
                 
-                # Check for skip-related error messages (only if Success is not true)
-                if (!$result.Success -and $result.Error -and $result.Error -match "ISO file not found|file not found|not found|disabled in configuration|not configured|skipped|not available|not provided|executable not found") {
+                # Check for skip-related error messages
+                if ($result.Error -and $result.Error -match "ISO file not found|file not found|not found|disabled in configuration|not configured|skipped|not available|not provided|executable not found") {
                     $isSkipped = $true
                 }
                 
-                # Check for skip-related messages (only if Success is not true)
-                if (!$result.Success -and $result.Message -and $result.Message -match "skipped|disabled|not configured|not found|not available|not provided") {
+                # Check for skip-related messages
+                if ($result.Message -and $result.Message -match "skipped|disabled|not configured|not found|not available|not provided") {
                     $isSkipped = $true
                 }
                 
@@ -1688,7 +1688,7 @@ try {
                     $isSkipped = $true
                 }
                 
-                if ($key -eq "Event Logs Cleanup" -and !$result.Success -and $result.Error -match "disabled|not configured") {
+                if ($key -eq "Event Logs Cleanup" -and $result.Error -match "disabled|not configured") {
                     $isSkipped = $true
                 }
                 
@@ -1700,11 +1700,11 @@ try {
                     $isSkipped = $true
                 }
                 
-                # Display appropriate status - prioritize Success over skip detection
-                if ($result.Success -eq $true -and $result.Skipped -ne $true) {
-                    Write-Host "  [SUCCESS] $key" -ForegroundColor Green
-                } elseif ($isSkipped -or $result.Skipped -eq $true) {
+                # Display appropriate status
+                if ($isSkipped) {
                     Write-Host "  [SKIPPED] $key" -ForegroundColor Yellow
+                } elseif ($result.Success -eq $true) {
+                    Write-Host "  [SUCCESS] $key" -ForegroundColor Green
                 } else {
                     Write-Host "  [FAILED] $key" -ForegroundColor Red
                 }

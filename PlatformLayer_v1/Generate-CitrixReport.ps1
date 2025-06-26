@@ -974,7 +974,19 @@ function Get-ComponentDetails {
         }
         
         "Event Logs Cleanup" {
-            if ($Result.Success -and $Result.Skipped -ne $true) {
+            if ($Result.Skipped) {
+                $detailsHTML += '<div class="detail-section">'
+                $detailsHTML += '<div class="detail-section-title">Event Logs Cleanup Status</div>'
+                if ($Result.Message) {
+                    $detailsHTML += "<div class='detail-item detail-info'>[SKIPPED] $($Result.Message)</div>"
+                } else {
+                    $detailsHTML += '<div class="detail-item detail-info">[SKIPPED] Event logs cleanup disabled in configuration</div>'
+                }
+                if ($Result.Details) {
+                    $detailsHTML += "<div class='detail-item detail-info'>Details: $($Result.Details)</div>"
+                }
+                $detailsHTML += '</div>'
+            } elseif ($Result.Success) {
                 $detailsHTML += '<div class="detail-section">'
                 $detailsHTML += '<div class="detail-section-title">Event Logs Cleanup Tasks</div>'
                 if ($Result.Message) {
@@ -1556,7 +1568,7 @@ function Get-ComponentDetails {
         }
         
         "Automatic Maintenance" {
-            if (($Result.Success -or $Result.Optimized) -and $Result.Skipped -ne $true) {
+            if ($Result.Success -or $Result.Optimized) {
                 $detailsHTML += '<div class="detail-section">'
                 $detailsHTML += '<div class="detail-section-title">Automatic Maintenance Disable</div>'
                 if ($Result.Message) {
@@ -1593,7 +1605,7 @@ function Get-ComponentDetails {
         }
         
         "Recycle Bin Disable" {
-            if ($Result.Success -and $Result.Skipped -ne $true) {
+            if ($Result.Success) {
                 $detailsHTML += '<div class="detail-section">'
                 $detailsHTML += '<div class="detail-section-title">Recycle Bin Disable</div>'
                 if ($Result.Message) {
@@ -1603,14 +1615,6 @@ function Get-ComponentDetails {
                 }
                 if ($Result.Details) {
                     $detailsHTML += "<div class='detail-item detail-info'>Details: $($Result.Details)</div>"
-                }
-                $detailsHTML += '</div>'
-            } elseif ($Result.Skipped) {
-                $detailsHTML += '<div class="detail-section">'
-                $detailsHTML += '<div class="detail-section-title">Recycle Bin Configuration Status</div>'
-                $detailsHTML += "<div class='detail-item detail-info'>[SKIPPED] Recycle Bin disable was not performed</div>"
-                if ($Result.Message) { 
-                    $detailsHTML += "<div class='detail-item detail-info'>Reason: $($Result.Message)</div>" 
                 }
                 $detailsHTML += '</div>'
             } else {
@@ -2393,15 +2397,15 @@ function New-CitrixReport {
             $progressValue = 50
             $statusText = "In Progress"
             
-            # Check status in correct priority order: Success first, then Skipped, then Error
-            if ($Result.Success -eq $true -and $Result.Skipped -ne $true) {
-                $progressClass = "progress-success"
-                $progressValue = 100
-                $statusText = "Completed"
-            } elseif ($Result.Skipped -eq $true -or ($Result.Error -and $Result.Error -match "ISO file not found|file not found|not found|disabled in configuration")) {
+            # Check for skipped status or file not found errors (treat as skipped)
+            if ($Result.Skipped -eq $true -or ($Result.Error -and $Result.Error -match "ISO file not found|file not found|not found")) {
                 $progressClass = "progress-warning"
                 $progressValue = 0
                 $statusText = "Skipped"
+            } elseif ($Result.Success -eq $true) {
+                $progressClass = "progress-success"
+                $progressValue = 100
+                $statusText = "Completed"
             } else {
                 $progressClass = "progress-error"
                 $progressValue = 25
